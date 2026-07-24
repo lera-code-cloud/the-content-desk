@@ -1,0 +1,2178 @@
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { Bell, MessageCircle, Copy, Check, ChevronDown, ChevronUp, Sparkles, LogOut, Send, RotateCcw, Archive as ArchiveIcon, Wand2, Image as ImageIcon, X as XIcon, Trash2 } from 'lucide-react';
+
+/* ============================== CONSTANTS ============================== */
+
+const USERS = ['Darin', 'Alyona', 'Nastya', 'Vika', 'Nazar', 'Tania'];
+const MANAGER = 'Lera';
+const ALL_USERS = [...USERS, MANAGER];
+
+const AVATAR_COLORS = {
+  Darin: '#7C93B3',   // pastel blue
+  Alyona: '#8CAE93',  // pastel green
+  Vika: '#C9B87A',    // pastel yellow
+  Nastya: '#84B0BA',  // pastel light blue / cyan
+  Nazar: '#A390B5',   // pastel purple
+  Tania: '#C797A8',   // pastel pink
+  Lera: '#9A9A9A',    // pastel gray
+};
+
+const NEWS_ANGLES = [
+  { key: 'shock', label: 'Shock', icon: '⚡' },
+  { key: 'inspiration', label: 'Inspiration', icon: '✨' },
+  { key: 'controversy', label: 'Controversy', icon: '🔥' },
+  { key: 'personal', label: 'Personal Story', icon: '🤍' },
+  { key: 'numbers', label: 'Numbers', icon: '📊' },
+];
+
+const PHOTO_ANGLES = [
+  { key: 'visual_story', label: 'Visual Story', icon: '📷' },
+  { key: 'transformation', label: 'Transformation', icon: '🔄' },
+  { key: 'family_love', label: 'Family & Love', icon: '🤍' },
+  { key: 'rare_access', label: 'Rare Access', icon: '🔑' },
+  { key: 'journey', label: 'Journey', icon: '🌟' },
+];
+
+// Applied to POST headlines so they arrive already formatted for publishing.
+const HEADLINE_FORMAT = `## OUTPUT FORMATTING — apply to EVERY headline you return
+1. Write the ENTIRE headline in UPPER CASE.
+2. Plain text only — NEVER add any markup, bold, italics, or highlighting of any kind. Do NOT wrap any word or phrase in ** or ~~ or any other symbols. Return the headline as a single unstyled uppercase string.
+3. Keep any exact quote in the input verbatim — never change any character inside quotation marks.`;
+
+// Shared quote-usage rule for headlines, story captions, and leads.
+const QUOTE_RULE = `## QUOTES IN THE INPUT (strict)
+If the input contains a quote (text in quotation marks), you MUST reuse it verbatim inside the output — in several of the angles/versions, not just one. Keep quoted text EXACTLY as given (never edit inside quotation marks). If several quotes are provided, spread them across different angles/versions (and, where relevant, some can go in leads rather than headlines), and you may combine more than one quote in a single headline/lead where it fits naturally.`;
+
+// Shared age-usage rule for headlines.
+const AGE_RULE = `## USING AGE (only when it strengthens the hook)
+When an age is available in the input AND the story is about appearance, aging, looks, health, transformation, "how they look now", or a milestone where age adds punch, WORK THE AGE INTO the headline (e.g. "AT 54", ", 47,", "AT JUST 29"). Age concretizes the hook and boosts CTR for look/age topics.
+BUT if the age IS the intrigue, do the opposite — do NOT reveal it, and tease it instead:
+- Age-gap couples: do NOT state the partners' ages (or hide at least one). Turn the gap itself into the hook with phrases like "HUGE AGE GAP", "DECADES APART", "OLD ENOUGH TO BE HER ___", "THE AGE DIFFERENCE THAT RAISED EYEBROWS" — without giving the numbers.
+- "Guess her age" / "you won't believe how old" style: keep the number hidden, make the gap between looks and age the tease.
+Never invent an age that isn't in the input. If no age is given, don't fabricate one.`;
+
+// Shared no-CTA rule — applies to POSTS only (headlines + social leads).
+// Stories are the ONE place directive CTAs ("Details ⬇️", "Find Out Why 👇") are allowed;
+// this rule must NEVER be pasted into the story prompts.
+const NO_CTA_RULE = `## ABSOLUTE RULE — NO CALL-TO-ACTION VERBS AIMED AT THE READER (posts only)
+This is a hard rule, not a style preference. NEVER use a verb that commands or invites the reader to take an action, anywhere in the headline or the lead — including disguised/soft imperatives. BANNED verbs/phrases (non-exhaustive — the pattern is banned, not just these exact words): "see", "watch", "read", "click", "check", "look", "find out", "discover", "learn more", "swipe", "tap", "explore", "keep reading", "see why", "watch what happened", "see the photos", "find out how", "comment", "tag a friend", "share if".
+The curiosity gap plus a plain factual pointer ("Details below", "The full story is in the comments") already does the job of pulling the reader in — a command is redundant AND against the rules.
+SELF-CHECK before returning output: re-read every headline and every lead one banned-verb-family at a time. If ANY of those verbs appears anywhere — including inside a photo-count phrase like "SEE 30+ PHOTOS" — rewrite that phrase to remove the verb while keeping the same information (e.g. "SEE 30+ RARE PHOTOS" → "30+ RARE PHOTOS"). Do this for headlines AND leads before you output the JSON.`;
+
+const NEWS_PROMPT = `## NO INTERNET ACCESS
+You cannot browse, fetch, or open URLs. If the input contains a URL, treat the words inside the URL itself (slug, filename, any visible topic words) plus any surrounding text as the ONLY information you have. NEVER say you can't access a link, never explain your limitations, never ask for more information — always produce the JSON output below using whatever text is given, even if it is minimal. This rule overrides every other instinct.
+
+## ABSOLUTE RULE #1 — ZERO INVENTED FACTS
+This is the most important rule. It overrides everything else.
+- NEVER invent quotes, numbers, timestamps, or details not present in the input.
+- NEVER write "She said...", "He revealed...", "Sources claim..." unless that exact quote/fact was provided.
+- If only a raw headline is given with no sources — work ONLY with the words in that headline.
+- If tempted to add a detail to make the headline stronger — DO NOT. Use a curiosity gap instead.
+- Before writing any headline, ask: "Is every fact, quote and number here present in what I was given?" If NO — remove it or restructure without it.
+
+## ROLE
+You are an expert headline writer for a Facebook news/media page, trained on 100 top-performing posts with the highest CTR. Generate headlines based strictly on proven patterns from those top posts.
+
+## OUTPUT — raw JSON only, no markdown, no explanation, no intro text
+{"names_in_input":["Full Name As A Person Would Write It"],"shock":["headline string","headline string","headline string"],"inspiration":[...],"controversy":[...],"personal":[...],"numbers":[...]}
+"names_in_input": list every real person's full name mentioned anywhere in the source material (the main subject and anyone else named — partners, family, co-stars), written in normal Title Case (e.g. "Millie Bobby Brown") even though the headlines themselves are ALL CAPS. Empty array if no person is named.
+Each angle must have exactly 3 headlines. Each array item MUST be a plain string — never an object.
+
+## ANGLE DEFINITIONS
+SHOCK — Lead with the most disturbing, unexpected or hard-to-believe fact. Trigger words: BONE-CHILLING · DISTURBING · NOBODY SAW COMING · ALL ALONG · TURNS OUT · SINISTER
+INSPIRATION — Lead with survival, sacrifice, resilience or unexpected triumph. Trigger words: DESPITE · WALKED AWAY · CHOSE TO · STOOD BY · NEVER GAVE UP · SURVIVED
+CONTROVERSY — Lead with conflict, public reactions or scandal. Trigger words: UNDER FIRE · RAISES MORE QUESTIONS · PEOPLE ARE NOT HOLDING BACK · BLUNT REACTION · EVASIVE
+PERSONAL STORY — Lead with a specific person, relationship or intimate detail. Trigger words: FINAL WORDS · LAST WISH · DAUGHTER · WIDOW · FOR THE FIRST TIME · BREAKS SILENCE · GUT-WRENCHING
+NUMBERS — Lead with a specific stat, amount, count or timeframe. Trigger words: $[AMOUNT] · [N] YEARS · AT JUST [AGE] · [N] HOURS BEFORE · [N] PHOTOS · [EXACT TIME]
+
+## TOP HOOK PATTERNS (use these structures)
+1. "QUOTE": rest of headline
+2. REVEALED: / UNCOVERED: / EXPOSED:
+3. Everyone Thought [X] — But [contradiction]
+4. [Fact] — [Unexpected twist after em dash]
+5. Finally Breaks Silence / Police Finally Know / Finally Reveals
+6. One Thing / One Decision / One Moment
+7. [N] Sharp/Blunt/Encouraging Words
+8. Role + Role + N Facts About [Person]
+9. [Positive milestone] — Days Later [tragedy]
+10. [N]+ Rare / Little-Seen / Private Photos
+11. People/Fans React — quote-style reaction
+12. Final Photo / Post / Moments / Words
+13. What Was Found / What [Person] Did
+14. All Along Revelation — Turns Out / Was There All Along
+15. Seen for the First Time Since [event]
+
+## TOP TRIGGER WORDS
+Emotional shock: BONE-CHILLING · DEVASTATING · HAUNTING · GUT-WRENCHING · DISTURBING · CHILLING · SINISTER · EERIE · HORRIFIC · OMINOUS
+Final moments: FINAL MOMENTS · FINAL POST · FINAL VIDEO · FINAL PHOTO · LAST WISH · LAST WORDS · CONTROVERSIAL LAST POST
+Exclusivity: LITTLE-SEEN · RARE · PRIVATE · FOR THE FIRST TIME · NEVER-BEFORE-SEEN · RARELY SEEN
+Viral/Reaction: VIRAL VIDEO · GOES VIRAL · HOT TOPIC · SPARKS BUZZ · SPARKS CONCERN · ALL EYES ON · STEAL THE ATTENTION
+Investigation: REVEALED · UNCOVERED · EXPOSED · IDENTIFIED · DNA EVIDENCE · WHAT WE KNOW · CAUSES OF DEATH
+Time pressure: JUST HOURS BEFORE · FINAL HOURS · DAYS BEFORE · MOMENTS BEFORE · IT ALL STARTED AT [TIME]
+Transformation: UNRECOGNIZABLE · LOOKS NOTHING LIKE BEFORE · IF SHE AGED NATURALLY · OUTSHINE
+Scandal/Politics: RAISES MORE QUESTIONS · EVASIVE · CONTROVERSIAL · UNDER FIRE · SPEAKS LOUDER THAN · BLUNT REACTION
+
+## TECHNICAL RULES
+- 10–18 words per headline
+- Numbers always specific ("12 hours" not "several hours", "4:48 AM" not "early morning")
+- Em dash (—) separates fact from twist in ~60% of headlines
+- Curiosity gap: the reader must NOT get the full answer from the headline alone
+- NEVER use "phrase. phrase. phrase." structure
+
+${QUOTE_RULE}
+
+${AGE_RULE}
+
+${NO_CTA_RULE}
+
+${HEADLINE_FORMAT}
+
+## FORBIDDEN WORDS — NEVER USE
+kill/killer · murder · attack · assault · shoot/shooting · stab · blood/gore · torture · weapon · gun · knife · war · racism · nazi · suicide · self-harm · overdose · sex/sexual · nude · porn · rape · underage · minor · drugs · cocaine · heroin · scam · fraud · fuck · shit · bitch · abortion · miscarriage
+
+## FORBIDDEN PATTERNS — NEVER USE
+"turned into a nightmare" · "ended in disaster" · "what happened next will shock you" · "this changes everything" · "the shocking reason behind" · "you won't believe" · "wait until you see" · "heartbreaking betrayal" · "shocking twist" · "jaw-dropping moment" · "fans are furious" · "sparks outrage" · "comment YES if" · "tag someone who" · "share if you agree" · "everyone is talking about"`;
+
+const PHOTO_PROMPT = `## NO INTERNET ACCESS
+You cannot browse, fetch, or open URLs. If the input contains a URL, treat the words inside the URL itself (slug, filename, any visible topic words) plus any surrounding text as the ONLY information you have. NEVER say you can't access a link, never explain your limitations, never ask for more information — always produce the JSON output below using whatever text is given, even if it is minimal. This rule overrides every other instinct.
+
+## ABSOLUTE RULE — ZERO INVENTED FACTS
+NEVER invent quotes, numbers, or details not present in the input. If a photo count is provided, always use exactly that. If not, use "30+" as default.
+
+## ROLE
+You are an expert headline writer for a Facebook celebrity/entertainment page specializing in PHOTO ARTICLES — posts that drive clicks to galleries of 10–50+ photos.
+
+## INPUT TYPES — HOW TO HANDLE THEM
+1. TEXT DESCRIPTION — use facts and details directly
+2. LINKS/URLs — use the context, names, events, and details mentioned around those links
+3. IMAGE CONTENT — analyze who is in it, what is notable, the setting, mood, outfits, expressions
+In all cases: identify the most compelling visual hook. What makes these photos interesting to click?
+
+## PHOTO DESCRIPTOR SELECTION — CHOOSE THE BEST ONE (vary across headlines, do NOT default to RARE)
+RARE — hard to find or seldom published
+LITTLE-SEEN — slightly more public than rare but still not widely circulated
+PRIVATE — personal/family moments not meant for public
+INTIMATE — emotionally close, affectionate, behind-the-scenes personal
+WILD / BOLD — outrageous outfits, unexpected moments, dramatic events
+THEN-AND-NOW — explicitly comparing past and present looks
+BEFORE-AND-AFTER — showing a transformation or change
+BEHIND-THE-SCENES — backstage, off-camera, candid event moments
+GENUINE / CANDID — unposed, authentic moments
+
+## STYLE REFERENCE — TOP-PERFORMING EXAMPLES (style compass; do NOT copy)
+1. Seal Was "The First One to Change a Diaper" for Heidi Klum's Firstborn — 30+ THEN-AND-NOW PHOTOS Show HOW IT ALL TURNED OUT After Divorce
+2. Plastic Surgeons Reveal WHY KRISTI NOEM LOOKS SO DIFFERENT at 54 (Showcased in 30+ Photos)
+3. "L.A. Law" Star Ditches Wife of 27 Years and 3 Kids for a "Crazy-Bright Girl" He Met at 16 — SHOCKING TIMELINE IN 30+ PHOTOS
+4. Hawke & Thurman's Daughter Earns the Title of "Best Wedding Dress Ever," Looking IDENTICAL to Her Mom — 15+ INTIMATE PHOTOS of the Bride and Her Famous Husband
+5. 10 LITTLE-SEEN PHOTOS of Tiger Woods' Ex Elin Nordegren
+6. 30+ RARE PICS of Enrique Iglesias & Anna Kournikova's 3 Blond Kids Whom Their Superstar Dad Put Above His Career
+7. Russell Wilson Was a Rising NFL Star When He Found His Faith With a Heartbroken Single Mom — 40+ PRIVATE IMAGES Show the American's "Favorite" Family of Six
+8. Cancer Survivor, Single Dad, TV Icon — HOW HE LOOKS NOW AT 59 IN 30+ PICS
+
+## OUTPUT — raw JSON only, no markdown, no explanation
+{"names_in_input":["Full Name As A Person Would Write It"],"visual_story":["headline string","headline string","headline string"],"transformation":[...],"family_love":[...],"rare_access":[...],"journey":[...]}
+"names_in_input": list every real person's full name mentioned anywhere in the source material, written in normal Title Case (e.g. "Millie Bobby Brown") even though the headlines themselves are ALL CAPS. Empty array if no person is named.
+Each angle must have exactly 3 headlines. Each array item MUST be a plain string — never an object.
+
+## PHOTO ARTICLE ANGLE DEFINITIONS
+VISUAL STORY — The photos ARE the story. Lead with what the reader will SEE.
+TRANSFORMATION — Before/after, then/now, on-screen vs real life. Visual contrast.
+FAMILY & LOVE — Intimate family moments, kids, relationships. Warmth drives clicks.
+RARE ACCESS — Exclusivity, hard to find, never-before-seen access.
+JOURNEY — Life arc, career path, role-stacked bio framing.
+
+## CRITICAL PHOTO ARTICLE RULES
+1. PHOTO COUNT IS MANDATORY — every headline must END with a specific photo count + descriptor + PHOTOS/PICS/IMAGES (e.g. "30+ RARE PHOTOS", "15+ INTIMATE PICS", "IN 30+ PICS", "(30+ Photos)").
+2. PHOTO COUNT POSITION — always at the END, after an em dash or in parentheses.
+3. PHOTO TYPE VOCABULARY — use exactly one descriptor per headline; vary across headlines.
+4. NO NEWS TRIGGERS — avoid DISTURBING · BONE-CHILLING · SINISTER · EXPOSED · SHOCKING (unless paired with TIMELINE/PHOTOS); those belong to news, not galleries.
+5. WARMTH IS ALLOWED — photo articles can be warm, admiring, nostalgic. Not everything needs to be dark.
+6. ROLE STACKING WORKS GREAT — "Cancer Survivor, Single Dad, TV Icon — HOW HE LOOKS NOW IN 30+ PICS".
+7. 12–20 words per headline (slightly longer than news because the photo count adds words).
+8. Structures: "[Role] + [Role] + [Role] — [N]+ PHOTOS of [Person]'s Journey" · "From [humble origin] to [peak achievement] — [N]+ PICS" · "[Person]'s [adjective] Life in [N]+ Photos That [describe arc]".
+
+${QUOTE_RULE}
+
+${AGE_RULE}
+
+${NO_CTA_RULE}
+
+${HEADLINE_FORMAT}
+(For photo articles: keep the trailing photo count + descriptor + PHOTOS/PICS in UPPER CASE like the rest of the headline.)
+
+## FORBIDDEN WORDS — NEVER USE
+kill/killer · murder · attack · assault · shoot/shooting · stab · blood/gore · torture · weapon · gun · knife · war · racism · nazi · suicide · self-harm · overdose · sex/sexual · nude · porn · rape · underage · minor · drugs · cocaine · heroin · scam · fraud · fuck · shit · bitch · abortion · miscarriage`;
+
+const ANGLE_LEADS_PROMPT = `## NO INTERNET ACCESS
+You cannot browse, fetch, or open URLs. Never say you can't access something — always produce the JSON output below using whatever text is given.
+
+## ROLE & GOAL
+Facebook social-media writer for a news/entertainment publisher. For EACH angle you receive one lead to write — the caption that appears above the image. There is ONE lead per angle, and it should work with any of that angle's headlines (write to the angle's shared intrigue, not to one specific headline's wording).
+The post's whole job is to move readers into the COMMENTS, where the article link lives. The headline already carries the hook. Your lead must (a) add emotional value — deepen the feeling, curiosity or stakes — and (b) end with its OWN pointer toward the comments, phrased as a fact (see MANDATORY CLOSING below), never as a command. Prefer an ADDITIONAL, different angle on the pull rather than just repeating the headline's hook — give the reader a second, fresh reason to want what's in the comments.
+
+## WHAT EACH LEAD MUST CONTAIN
+- 2–4 sentences that amplify the angle's hook and add an emotional layer (curiosity, surprise, warmth, or mild concern) — never just restate the headline
+- A clear pull toward the comments/link, framed as a factual pointer (not a copy of the headline's hook, and never a command — see NO_CTA rule below)
+- Grounded-tabloid tone: punchy, opinionated but measured, never taking sides on blame or guilt
+- English only
+
+## FORMATTING (already apply it — do NOT return a plain draft)
+- Sentence case overall, with 1–3 of the MOST intriguing words in CAPS for punch (emphasize the intrigue, never a person's name). A few CAPS words for the whole lead is enough — never overdo it.
+- PLAIN TEXT ONLY: do NOT use any markup characters. Never output ** or ~~ or markdown of any kind in a lead. Emphasis in leads is done ONLY by writing words in CAPS.
+- EMOJI ARE MANDATORY: include 1–2 emoji that genuinely fit the emotion or the concrete content of THIS lead (e.g. 💔 grief, 😱 shock, 🕊️ loss/peace, ❤️ love, 👀 intrigue, ⚖️ justice, 🔥 controversy, 💪 resilience, 👑 fame). Choose per-lead — never the same emoji on every lead. Place them where they land naturally, not all clumped at the end.
+
+${NO_CTA_RULE}
+
+## MANDATORY CLOSING — point to the comments, WITHOUT commanding the user
+Every lead MUST end with a short, natural pointer to the comments, followed by a trailing arrow emoji (⬇️ / 🔽 / ⤵️) OR phrased as "...in the comments".
+- Instead of a command, state WHERE the information lives, as a fact: "Details ⬇️", "Full story below ⬇️", "Photos in the comments", "Her full statement is below ⤵️", "The rest is in the comments 🔽", "Everything we know is below ⬇️", "The full gallery is in the comments ⤵️".
+- VARY these constantly and creatively based on what the lead is about; do NOT reuse the same closer every time. They may repeat occasionally, but not often.
+
+## QUESTIONS
+- Only include a question if it's genuinely relevant and natural for that specific lead. Do NOT force a question into every lead — many strong leads have none.
+
+${QUOTE_RULE}
+
+## ABSOLUTE RULE — ZERO INVENTED FACTS
+Never invent quotes, numbers, or details not present in the matching headline (except quotes explicitly provided in the input, which you must reuse verbatim).
+
+## FORBIDDEN PHRASES
+"no one saw this coming" · "you won't believe" · "absolutely shocking" · "jaw-dropping" · "this changes everything" · "the internet is losing it" · "we are speechless" · "comment below" · "tag a friend" · "click the link" · "share if" · "read more" · "see more" · "find out" · "watch"
+
+## INPUT & OUTPUT
+You receive a JSON object whose keys are angle names and whose values are arrays of that angle's headlines. Return a JSON object with the SAME keys, each value a SINGLE lead string for that angle.
+Return ONLY raw JSON, e.g.: {"shock":"lead string","inspiration":"lead string", ...}
+Every value must be a plain string.`;
+
+const FORMAT_PROMPT = `## ROLE
+Copy editor finalizing one Facebook headline and one Social Lead for publishing, exactly as the researcher selected and edited them.
+
+${NO_CTA_RULE}
+
+## HEADLINE RULES
+1. Write the entire headline in UPPER CASE.
+2. Fix grammar, spelling, and awkward/non-native phrasing ONLY. Never reword, restructure, or change word choice beyond correcting a genuine error. If nothing is wrong, change nothing.
+3. EXCEPTION to rule 2: the NO_CTA_RULE above is a mandatory content rule, not a style choice — if the researcher's draft contains a call-to-action verb aimed at the reader (see banned list above), remove/rewrite just that word or phrase (minimal fix, keep everything else the researcher wrote) even though this goes beyond a pure grammar fix.
+4. NEVER touch or "fix" any text inside quotation marks — quotes must stay exactly as given, even if imperfect. If the input the researcher wrote contains a provided quote, keep it verbatim.
+5. Plain text only — NEVER add bold, yellow, or any other highlighting/markup. Do not wrap any word or phrase in ** or ~~ or any other symbols. If the researcher's draft already has markup in it, strip it out (return plain unstyled text).
+
+## SOCIAL LEAD RULES
+1. Sentence case overall (proper nouns normal) — EXCEPT 1–3 of the most intriguing words in CAPS. Do not overdo it.
+2. Fix grammar and awkward/non-native phrasing only. Do not restructure or add new claims.
+3. EXCEPTION: same as the headline exception above — if the researcher's draft lead contains a banned call-to-action verb (see NO_CTA_RULE above), remove/rewrite just that word or phrase even though it goes beyond a pure grammar fix.
+4. EMOJI: ensure 1–2 emoji are present that logically fit the emotion/content, placed where they land naturally (not all clumped at the end). Trim if too many.
+5. The lead MUST end with a pointer to the comments + a trailing arrow (⬇️ / 🔽 / ⤵️) or "...in the comments" phrasing, stated as a fact — never a command.
+6. Keep a question ONLY if it's genuinely relevant; don't add one just to have one.
+
+## ABSOLUTE RULE
+Never invent facts. Only edit what is given, minimally (aside from the CTA-verb exceptions above).
+
+## OUTPUT
+Return ONLY raw JSON: {"headline": "...", "lead": "..."}`;
+
+/* ---------- STORIES ---------- */
+
+const STORY_ANGLES = [
+  { key: 'mystery', label: 'Mystery', icon: '🕵️' },
+  { key: 'transformation', label: 'Transformation', icon: '🔄' },
+  { key: 'reaction', label: 'Shocking Reaction', icon: '😱' },
+  { key: 'hidden', label: 'Hidden Detail', icon: '🔍' },
+  { key: 'question', label: 'Question', icon: '❓' },
+];
+
+const STORY_GEN_PROMPT = `## NO INTERNET ACCESS
+You cannot browse, fetch, or open URLs. If the input contains a URL, work only from the words in it and any surrounding text. Never say you can't access a link — always return the JSON below.
+
+## ROLE
+You help create and improve Facebook STORIES captions / Story text overlays for celebrity, political, and human-interest content. Goal: maximize CTR, curiosity, engagement, and pageview clicks.
+
+## CORE RULES
+- Fix grammar and spelling.
+- Do NOT change text inside quotation marks. Do NOT add quotation marks if none exist. Use double straight quotation marks only.
+- Sentence case, with only the most intriguing words/phrases in UPPERCASE.
+- Must sound natural to American English speakers.
+- Never invent facts. Never invent quotes. Use a quote-based hook only if an exact quote is provided.
+
+## TASK
+Create 5 UNIQUE Story captions, each far stronger than the original for CTR, curiosity, engagement, creativity. Do not simply reword the original.
+Find the single most surprising fact first, then build all 5 around that ONE core hook, each with a strong information gap (reader understands the topic but must click to learn the answer). Avoid vague hooks like "Fans are talking...".
+Use DIFFERENT hook styles across the five: mystery, transformation, shocking reaction, hidden detail, question, rare appearance, where-are-they-now.
+
+## STORY FORMAT (each version)
+- Exactly 2 lines. Line 1 = hook. Line 2 = CTA (e.g. "Details ⬇️", "Photos 👇", "Find Out Why 👇", "Explanation ⬇️", "See More 👇").
+- 65–110 characters total.
+- 2–3 important words in ALL CAPS for emphasis. Do NOT highlight a person's name or filler words this way — reserve the CAPS for the intrigue-carrying words.
+- Plain text only — NEVER add ~~yellow~~ markup, **bold** markup, or any other highlighting/markup. Emphasis is done ONLY via the ALL CAPS words above.
+
+## EMOJI RULES (adaptive — do NOT use a fixed template)
+- Use exactly 2 emoji per version.
+- The CTA line (line 2) ALWAYS ends with a directional emoji (⬇️ / 👇 / ⤵️).
+- The OTHER emoji is an emotional/contextual one that fits THIS hook — but its PLACEMENT must vary creatively version to version: sometimes at the very start of the hook, sometimes mid-sentence right after the key word, sometimes at the end of the hook line. Do NOT always put it after the first sentence. Choose the placement that best punches up the hook.
+- Never reuse the same emotional emoji across all five versions; vary both the emoji and its position.
+- Never more than 2 emoji total; never both on the same line.
+
+${QUOTE_RULE}
+
+${AGE_RULE}
+
+## OUTPUT
+Return ONLY raw JSON, exactly 5 versions, each a 2-line string with a real line break (\\n) between hook and CTA, plus a names_in_input field:
+{"names_in_input":["Full Name As A Person Would Write It"],"mystery":"line1\\nline2","transformation":"line1\\nline2","reaction":"line1\\nline2","hidden":"line1\\nline2","question":"line1\\nline2"}
+"names_in_input": every real person's full name mentioned anywhere in the source material, in normal Title Case. Empty array if none.
+Each of the 5 keys is the hook style used for that version.`;
+
+const STORY_SNIPPET_PROMPT = `## NO INTERNET ACCESS
+You cannot browse or open URLs. Work only from the text given. Never say you can't access a link — always return the JSON below.
+
+## ROLE
+Recommend the best Story IMAGE (snippet) for this story. Base it only on the given text; never invent facts.
+
+## INCLUDE
+- Who should appear
+- Framing (close-up, portrait, multiple people)
+- Expression
+- A detail worth highlighting
+- Whether a two-photo layout would improve curiosity
+- What should be AVOIDED because it reveals too much
+
+## TRANSFORMATION RULE
+For appearance / weight-loss / plastic-surgery / aging / "unrecognizable" stories: NEVER use the shocking "after" photo as the main Story image. Use the familiar "before" image to build curiosity. If using two photos, blur or crop the second so readers must click to see the full reveal.
+
+## OUTPUT
+Return ONLY raw JSON: {"recommendation":"2-4 short sentences of concrete visual direction"}`;
+
+const STORY_FORMAT_PROMPT = `## ROLE
+Copy editor finalizing ONE Facebook Story caption exactly as the researcher wrote/edited it.
+
+## RULES
+1. Fix grammar and spelling only. Never reword or restructure. If nothing is wrong, change nothing.
+2. NEVER touch text inside quotation marks. Do NOT add quotation marks if none exist. Use double straight quotes only.
+3. Sentence case overall, with the most intriguing 2–3 words in ALL CAPS for emphasis — that is the ONLY emphasis mechanism. Do not put a person's name in CAPS this way.
+4. Keep it 2 lines (hook line, then CTA line) if it already is; preserve the line break.
+5. Plain text only — NEVER add bold, yellow, or any other highlighting/markup. Do not wrap any word or phrase in ** or ~~ or any other symbols. If the researcher's draft already has markup in it, strip it out (return plain unstyled text, keeping any CAPS words as-is).
+6. Emoji: keep exactly 2 — one emotional/contextual emoji on the hook line and one directional CTA emoji (⬇️/👇/⤵️) on the CTA line. If the hook line has no emotional emoji, add one that fits the emotion; if there are more than 2, trim to this structure. Never highlight/format emoji.
+
+## ABSOLUTE RULE
+Never invent facts or quotes. Only edit minimally.
+
+## OUTPUT
+Return ONLY raw JSON: {"caption":"line1\\nline2, plain text with CAPS emphasis only"}`;
+
+/* ============================== HELPERS ============================== */
+
+function initials(name) { return name.slice(0, 2).toUpperCase(); }
+function avatarColor(name) { return AVATAR_COLORS[name] || '#6b6560'; }
+function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
+
+// Read an image file, resize it down (longest side <= maxDim) and JPEG-compress,
+// returning a small base64 data URL — keeps shared storage from bloating.
+function fileToResizedDataUrl(file, maxDim = 1100, quality = 0.72) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        let { width, height } = img;
+        if (width >= height && width > maxDim) { height = Math.round(height * maxDim / width); width = maxDim; }
+        else if (height > width && height > maxDim) { width = Math.round(width * maxDim / height); height = maxDim; }
+        const canvas = document.createElement('canvas');
+        canvas.width = width; canvas.height = height;
+        canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+        try { resolve(canvas.toDataURL('image/jpeg', quality)); }
+        catch (e) { reject(e); }
+      };
+      img.onerror = () => reject(new Error('Not a readable image'));
+      img.src = reader.result;
+    };
+    reader.onerror = () => reject(new Error('Could not read file'));
+    reader.readAsDataURL(file);
+  });
+}
+
+function timeAgo(iso) {
+  const diff = (Date.now() - new Date(iso).getTime()) / 1000;
+  if (diff < 60) return 'just now';
+  if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
+  if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
+  if (diff < 172800) return 'yesterday';
+  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+function extractMentions(text) {
+  const found = new Set();
+  ALL_USERS.forEach((n) => {
+    const re = new RegExp('@' + n + '\\b', 'i');
+    if (re.test(text)) found.add(n);
+  });
+  return Array.from(found);
+}
+
+// --- Request throttling & retry -------------------------------------------
+// Cap how many API requests run at once from this tab, and retry on rate limits.
+// This keeps bursts (many researchers generating together) from failing outright.
+const MAX_CONCURRENT = 4;
+let _active = 0;
+const _queue = [];
+function _acquire() {
+  if (_active < MAX_CONCURRENT) { _active++; return Promise.resolve(); }
+  return new Promise((resolve) => _queue.push(resolve));
+}
+function _release() {
+  _active = Math.max(0, _active - 1);
+  const next = _queue.shift();
+  if (next) { _active++; next(); }
+}
+const _sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function fetchWithRetry(body, timeoutMs, onStatus) {
+  const MAX_NETWORK_FAILS = 5; // give up only on repeated genuine network/timeout errors
+  const MAX_RATE_WAIT_MS = 45 * 1000; // cap rate-limit waiting per call at 45s — layered auto-retries above this call (see withAutoRetry) pick up from here with a fresh, visible attempt instead of one long silent wait
+  let networkFails = 0;
+  let rateWaited = 0;
+  let rateStep = 0;
+  let sentOnce = false;
+  while (true) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      if (onStatus) onStatus(sentOnce ? 'retrying' : 'sending', {});
+      sentOnce = true;
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+      // Rate limited / transient overload → wait and keep trying (does NOT count as a failure).
+      if (res.status === 429 || res.status === 529 || res.status === 503) {
+        if (rateWaited >= MAX_RATE_WAIT_MS) throw new Error('The service stayed busy for a while. Tap Retry to keep going.');
+        const retryAfter = parseFloat(res.headers.get('retry-after'));
+        const waitMs = Number.isFinite(retryAfter) ? retryAfter * 1000 : Math.min(20000, 1500 * Math.pow(2, rateStep)) + Math.random() * 500;
+        rateStep++;
+        rateWaited += waitMs;
+        if (onStatus) onStatus('busy', { waitMs });
+        await _sleep(waitMs);
+        continue;
+      }
+      return res;
+    } catch (e) {
+      clearTimeout(timer);
+      networkFails++;
+      const isTimeout = e.name === 'AbortError';
+      if (networkFails >= MAX_NETWORK_FAILS) {
+        throw new Error(isTimeout ? 'Timed out repeatedly — tap Retry.' : 'Network trouble — check your connection, then tap Retry.');
+      }
+      if (onStatus) onStatus('busy', { waitMs: 1200 * networkFails });
+      await _sleep(1200 * networkFails);
+      continue;
+    }
+  }
+}
+
+async function callClaude(system, userContent, maxTokens = 1500, timeoutMs = 30000, model = 'claude-sonnet-4-6', onStatus = null) {
+  if (_active >= MAX_CONCURRENT && onStatus) onStatus('queued', { position: _queue.length + 1 });
+  await _acquire();
+  let res;
+  try {
+    res = await fetchWithRetry({ model, max_tokens: maxTokens, system, messages: [{ role: 'user', content: userContent }] }, timeoutMs, onStatus);
+  } finally {
+    _release();
+  }
+  const data = await res.json();
+  if (data.error) throw new Error(data.error.message || 'API error');
+  const block = (data.content || []).find((b) => b.type === 'text');
+  const text = block?.text || '';
+
+  // Find the JSON object. Prefer a complete {...}, but if the response was cut
+  // off (no closing brace), grab from the first { to the end and try to repair.
+  let jsonStr = null;
+  const complete = text.match(/\{[\s\S]*\}/);
+  if (complete) {
+    jsonStr = complete[0];
+  } else {
+    const start = text.indexOf('{');
+    if (start !== -1) jsonStr = text.slice(start);
+  }
+  if (jsonStr === null) throw new Error('No JSON in response' + (text ? ': ' + text.slice(0, 160) : ' (empty response)'));
+
+  try {
+    return JSON.parse(jsonStr);
+  } catch (e) {
+    const repaired = tryRepairJson(jsonStr);
+    if (repaired) return repaired;
+    throw new Error('Response looked cut off and could not be parsed as JSON.');
+  }
+}
+
+// Best-effort repair of a truncated JSON object: cut back to the last complete
+// string/element and balance the open braces/brackets so we salvage a partial result.
+function tryRepairJson(s) {
+  for (let end = s.length; end > 1; end--) {
+    let candidate = s.slice(0, end).trim();
+    // trim a dangling comma
+    candidate = candidate.replace(/,\s*$/, '');
+    // balance quotes: count unescaped quotes; if odd, drop the trailing partial string
+    let q = 0;
+    for (let i = 0; i < candidate.length; i++) {
+      if (candidate[i] === '"' && candidate[i - 1] !== '\\') q++;
+    }
+    if (q % 2 !== 0) {
+      const lastQuote = candidate.lastIndexOf('"');
+      if (lastQuote === -1) continue;
+      candidate = candidate.slice(0, lastQuote).replace(/,\s*("[^"]*"\s*:\s*)?$/, '').replace(/,\s*$/, '');
+    }
+    // count and append missing closers
+    let braces = 0, brackets = 0, inStr = false, esc = false;
+    for (const ch of candidate) {
+      if (esc) { esc = false; continue; }
+      if (ch === '\\') { esc = true; continue; }
+      if (ch === '"') inStr = !inStr;
+      else if (!inStr) {
+        if (ch === '{') braces++;
+        else if (ch === '}') braces--;
+        else if (ch === '[') brackets++;
+        else if (ch === ']') brackets--;
+      }
+    }
+    if (inStr) continue;
+    let fixed = candidate.replace(/,\s*$/, '');
+    fixed += ']'.repeat(Math.max(0, brackets)) + '}'.repeat(Math.max(0, braces));
+    try {
+      const parsed = JSON.parse(fixed);
+      if (parsed && typeof parsed === 'object') return parsed;
+    } catch (e) { /* keep trimming */ }
+  }
+  return null;
+}
+
+function renderBoldMarkup(text) {
+  if (text === null || text === undefined || text === '') return null;
+  return String(text).split(/(\*\*[^*]+\*\*)/g).filter(Boolean).map((part, i) => {
+    if (part.startsWith('**') && part.endsWith('**')) {
+      return <strong key={i} className="text-amber-300 font-semibold">{part.slice(2, -2)}</strong>;
+    }
+    return <React.Fragment key={i}>{part}</React.Fragment>;
+  });
+}
+
+function renderMentions(text) {
+  return String(text == null ? '' : text).split(/(@[A-Za-z]+)/g).map((p, i) => {
+    const name = p.slice(1);
+    if (p.startsWith('@') && ALL_USERS.includes(name)) {
+      return <span key={i} className="text-amber-300 font-medium">{p}</span>;
+    }
+    return <React.Fragment key={i}>{p}</React.Fragment>;
+  });
+}
+
+// Render story markup: **bold** (white/bold) and ~~yellow~~ (yellow), preserving line breaks.
+function renderStoryMarkup(text) {
+  if (text === null || text === undefined || text === '') return null;
+  return String(text).split('\n').map((line, li) => (
+    <React.Fragment key={li}>
+      {li > 0 && <br />}
+      {line.split(/(\*\*[^*]+\*\*|~~[^~]+~~)/g).filter(Boolean).map((part, i) => {
+        if (part.startsWith('**') && part.endsWith('**')) return <strong key={i} className="font-semibold text-neutral-50">{part.slice(2, -2)}</strong>;
+        if (part.startsWith('~~') && part.endsWith('~~')) return <span key={i} style={{ color: '#e0b83a' }} className="font-semibold">{part.slice(2, -2)}</span>;
+        return <React.Fragment key={i}>{part}</React.Fragment>;
+      })}
+    </React.Fragment>
+  ));
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// Convert **bold** markup to <b> HTML (with escaping) so pasting into Excel/Docs keeps bold.
+function markupToHtml(text) {
+  return String(text == null ? '' : text).split(/(\*\*[^*]+\*\*)/g).filter(Boolean).map((part) => {
+    if (part.startsWith('**') && part.endsWith('**')) return '<b>' + escapeHtml(part.slice(2, -2)) + '</b>';
+    return escapeHtml(part);
+  }).join('');
+}
+
+// Story markup -> HTML: **bold** => <b>, ~~yellow~~ => colored span; line breaks => <br>.
+function storyMarkupToHtml(text) {
+  return String(text == null ? '' : text).split('\n').map((line) =>
+    line.split(/(\*\*[^*]+\*\*|~~[^~]+~~)/g).filter(Boolean).map((part) => {
+      if (part.startsWith('**') && part.endsWith('**')) return '<b>' + escapeHtml(part.slice(2, -2)) + '</b>';
+      if (part.startsWith('~~') && part.endsWith('~~')) return '<span style="color:#d4a017;font-weight:bold">' + escapeHtml(part.slice(2, -2)) + '</span>';
+      return escapeHtml(part);
+    }).join('')
+  ).join('<br>');
+}
+
+// Strip all story markup for a plain-text fallback.
+function stripStoryMarkup(text) {
+  return String(text == null ? '' : text).replace(/\*\*([^*]+)\*\*/g, '$1').replace(/~~([^~]+)~~/g, '$1');
+}
+
+// SAFETY NET: the prompts have a hard ban on highlighting a person's name, but the
+// model still slips up sometimes (e.g. "**JAKE BONGIOVI'S LOOK**"). Rather than rely
+// on prompt-following alone, deterministically strip the **bold**/~~yellow~~ markup
+// from any highlighted span that contains one of the real names from the source
+// material — keeping the words, just removing the highlight. Case-insensitive so it
+// still catches an ALL-CAPS headline even though `names` are given in natural case.
+function stripNameHighlights(text, names) {
+  if (!text || !names || !names.length) return text;
+  const tokens = new Set();
+  names.forEach((n) => {
+    const full = String(n || '').trim();
+    if (!full) return;
+    tokens.add(full);
+    // Also catch a bare first/last name or possessive ("Jake's", "Bongiovi") being
+    // highlighted on its own, not just the full name.
+    full.split(/\s+/).forEach((part) => {
+      const clean = part.replace(/[^A-Za-z'-]/g, '');
+      if (clean.length > 2) tokens.add(clean);
+    });
+  });
+  const tokenList = Array.from(tokens).sort((a, b) => b.length - a.length);
+  if (!tokenList.length) return text;
+  const namePattern = new RegExp(tokenList.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'), 'i');
+  return String(text).replace(/(\*\*[^*]+\*\*|~~[^~]+~~)/g, (span) => {
+    const inner = span.slice(2, -2);
+    return namePattern.test(inner) ? inner : span;
+  });
+}
+
+// Copy rich text (HTML + plain fallback) to the clipboard. Returns true on success.
+async function copyRich(html, plain) {
+  // 1) Modern API with explicit HTML + plain flavors (works on the real deployed site).
+  try {
+    if (navigator.clipboard && window.ClipboardItem && window.isSecureContext) {
+      await navigator.clipboard.write([new window.ClipboardItem({
+        'text/html': new Blob([html], { type: 'text/html' }),
+        'text/plain': new Blob([plain], { type: 'text/plain' }),
+      })]);
+      return true;
+    }
+  } catch (e) { /* fall through */ }
+  // 2) Rich execCommand fallback. The element must be actually rendered (not opacity:0
+  //    or display:none) or some browsers copy plain text only. Park it off-screen instead.
+  try {
+    const div = document.createElement('div');
+    div.contentEditable = 'true';
+    div.innerHTML = html;
+    div.style.position = 'fixed';
+    div.style.left = '-99999px';
+    div.style.top = '0';
+    div.style.whiteSpace = 'pre-wrap';
+    document.body.appendChild(div);
+    const range = document.createRange();
+    range.selectNodeContents(div);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+    const ok = document.execCommand('copy');
+    sel.removeAllRanges();
+    document.body.removeChild(div);
+    return ok;
+  } catch (e) { return false; }
+}
+
+/* ============================== STORAGE ============================== */
+// Real backend now (window.storage only exists inside Claude.ai artifacts).
+// The server keeps EACH post as its own record (see api/board.js), so two
+// people editing two different posts at the same time never overwrite each
+// other — only two edits to the exact same post at the exact same instant
+// could still race, which is a much narrower and rarer case.
+
+async function boardApi(action, payload) {
+  const res = await fetch('/api/board', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action, ...payload }),
+  });
+  if (!res.ok) {
+    let msg = `Board API error (${res.status})`;
+    try { const j = await res.json(); if (j?.error) msg = j.error; } catch (e) { /* ignore */ }
+    throw new Error(msg);
+  }
+  return res.json();
+}
+
+/* ============================== SMALL UI PIECES ============================== */
+
+function Avatar({ name, size = 'w-7 h-7 text-xs' }) {
+  return (
+    <div
+      className={`${size} rounded-full flex items-center justify-center font-medium text-neutral-900 shrink-0`}
+      style={{ backgroundColor: avatarColor(name) }}
+    >
+      {initials(name)}
+    </div>
+  );
+}
+
+function Dots() {
+  return (
+    <span className="inline-flex gap-1 items-center">
+      <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span>
+      <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" style={{ animationDelay: '.15s' }}></span>
+      <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" style={{ animationDelay: '.3s' }}></span>
+    </span>
+  );
+}
+
+function ModeBadge({ mode }) {
+  const label = mode === 'photo' ? 'Post' : 'Post';
+  return <span className="text-xs px-2 py-0.5 rounded border border-neutral-700 bg-neutral-800 text-neutral-400">{label}</span>;
+}
+
+// Textarea that auto-grows to fit its content so the whole text is always visible.
+// While the user is actively typing (focused), it holds its own local value so a
+// background refresh can't momentarily overwrite what's being typed.
+function AutoTextarea({ value, minHeight = 40, className = '', onChange, ...props }) {
+  const ref = useRef(null);
+  const [focused, setFocused] = useState(false);
+  const [local, setLocal] = useState(value || '');
+
+  // Sync down from props only when NOT focused (i.e. not mid-edit).
+  useEffect(() => { if (!focused) setLocal(value || ''); }, [value, focused]);
+
+  const resize = () => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = Math.max(minHeight, el.scrollHeight) + 'px';
+  };
+  useEffect(() => { resize(); }, [local]);
+  useEffect(() => {
+    window.addEventListener('resize', resize);
+    return () => window.removeEventListener('resize', resize);
+  }, []);
+
+  return (
+    <textarea
+      ref={ref}
+      value={focused ? local : (value || '')}
+      rows={1}
+      onFocus={() => setFocused(true)}
+      onBlur={() => setFocused(false)}
+      onChange={(e) => { setLocal(e.target.value); onChange && onChange(e); }}
+      onInput={resize}
+      style={{ minHeight, overflow: 'hidden', resize: 'none' }}
+      className={className}
+      {...props}
+    />
+  );
+}
+
+/* ============================== LOGIN ============================== */
+
+function LoginScreen({ onSelect }) {
+  const researchers = ALL_USERS.filter((n) => n !== MANAGER);
+  return (
+    <div className="min-h-screen bg-neutral-950 flex items-center justify-center p-6">
+      <div className="max-w-md w-full">
+        <div className="flex flex-col items-center mb-10">
+          <div className="w-14 h-14 rounded-2xl bg-amber-100 flex items-center justify-center mb-4">
+            <span className="text-neutral-900 font-serif italic text-2xl">CD</span>
+          </div>
+          <h1 className="text-neutral-100 text-lg font-medium tracking-wide">The Content Desk</h1>
+          <p className="text-neutral-500 text-sm mt-1">let's work</p>
+        </div>
+        <p className="text-neutral-600 text-xs uppercase tracking-widest mb-3 text-center">Who are you?</p>
+        <div className="grid grid-cols-3 gap-3">
+          {researchers.map((name) => (
+            <button
+              key={name}
+              onClick={() => onSelect(name)}
+              className="flex flex-col items-center gap-2 bg-neutral-900 border border-neutral-800 rounded-xl py-5 hover:border-amber-600 transition-colors"
+            >
+              <Avatar name={name} size="w-10 h-10 text-sm" />
+              <span className="text-neutral-200 text-sm">{name}</span>
+            </button>
+          ))}
+        </div>
+        <div className="flex justify-center mt-3">
+          <button
+            onClick={() => onSelect(MANAGER)}
+            className="flex flex-col items-center gap-2 bg-neutral-900 border border-neutral-800 rounded-xl py-5 hover:border-amber-600 transition-colors w-1/3 px-2"
+          >
+            <Avatar name={MANAGER} size="w-10 h-10 text-sm" />
+            <span className="text-neutral-200 text-sm">{MANAGER}</span>
+            <span className="text-amber-400 text-xs">manager</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ============================== NEW POST FORM ============================== */
+
+function NewPostForm({ onCreate, kind = 'post' }) {
+  const isStory = kind === 'story';
+  const [mode, setMode] = useState('news');
+  const [rawInput, setRawInput] = useState('');
+  const [intrigue, setIntrigue] = useState('');
+  const [photoCount, setPhotoCount] = useState('');
+  const [photoSubtype, setPhotoSubtype] = useState('transformation');
+  const [error, setError] = useState('');
+
+  function submit() {
+    if (!rawInput.trim()) { setError('Add a headline, article text, URL, or topic first.'); return; }
+    setError('');
+    onCreate({ kind, mode, rawInput: rawInput.trim(), intrigue: intrigue.trim(), photoCount: photoCount.trim(), photoSubtype });
+    setRawInput('');
+    setIntrigue('');
+    setPhotoCount('');
+  }
+
+  return (
+    <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-5 mb-4">
+      {!isStory && (
+        <div className="flex gap-0 mb-4 border border-neutral-800 rounded-lg overflow-hidden w-fit">
+          <button onClick={() => setMode('news')} className={`px-4 py-2 text-sm ${mode === 'news' ? 'bg-amber-200 text-neutral-900 font-medium' : 'text-neutral-500 hover:bg-neutral-800'}`}>News/Evergreen article</button>
+          <button onClick={() => setMode('photo')} className={`px-4 py-2 text-sm ${mode === 'photo' ? 'bg-amber-200 text-neutral-900 font-medium' : 'text-neutral-500 hover:bg-neutral-800'}`}>Photo article</button>
+        </div>
+      )}
+
+      <label className="text-xs uppercase tracking-wider text-neutral-500 mb-2 block">
+        {isStory ? 'Raw draft, link, or topic for the story' : (mode === 'photo' ? 'Person, story or topic for the photo article' : 'Raw headline, article text, URL, or topic')}
+      </label>
+      <AutoTextarea
+        value={rawInput}
+        minHeight={90}
+        onChange={(e) => setRawInput(e.target.value)}
+        placeholder={isStory ? 'Paste a draft caption, a link, or describe the story…' : 'Paste a raw headline, article text, URL, or describe the story…'}
+        className="w-full bg-neutral-950 border border-neutral-700 rounded-lg px-4 py-3 text-sm text-neutral-100 placeholder-neutral-600 outline-none focus:border-amber-500"
+      />
+
+      <label className="text-xs uppercase tracking-wider text-neutral-500 mb-2 mt-4 block">{isStory ? 'Core hook' : 'Intrigue'} <span className="text-neutral-700 normal-case">(optional)</span></label>
+      <AutoTextarea
+        value={intrigue}
+        minHeight={56}
+        onChange={(e) => setIntrigue(e.target.value)}
+        placeholder={isStory ? 'The single hook all 5 story versions should revolve around…' : 'The core hook all headlines should build around…'}
+        className="w-full bg-neutral-950 border border-neutral-700 rounded-lg px-4 py-3 text-sm text-neutral-100 placeholder-neutral-600 outline-none focus:border-amber-500"
+      />
+
+      {!isStory && mode === 'photo' && (
+        <div className="flex gap-3 mt-4 flex-wrap">
+          <div className="flex-1 min-w-40">
+            <label className="text-xs uppercase tracking-wider text-neutral-500 mb-2 block">Photo count</label>
+            <input value={photoCount} onChange={(e) => setPhotoCount(e.target.value)} placeholder="e.g. 30+"
+              className="w-full bg-neutral-950 border border-neutral-700 rounded-lg px-3 py-2.5 text-sm text-neutral-100 placeholder-neutral-600 outline-none focus:border-amber-500" />
+          </div>
+          <div className="flex-1 min-w-40">
+            <label className="text-xs uppercase tracking-wider text-neutral-500 mb-2 block">Subtype</label>
+            <select value={photoSubtype} onChange={(e) => setPhotoSubtype(e.target.value)}
+              className="w-full bg-neutral-950 border border-neutral-700 rounded-lg px-3 py-2.5 text-sm text-neutral-100 outline-none focus:border-amber-500">
+              <option value="transformation">Transformation / look change</option>
+              <option value="family">Family / kids / relationship</option>
+              <option value="love_story">Love story / couple</option>
+              <option value="career">Career journey / rise to fame</option>
+              <option value="outfits">Outfits / red carpet / style</option>
+              <option value="then_now_cast">Then &amp; now / cast reunion</option>
+              <option value="biography">Biography / life story</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+        </div>
+      )}
+
+      {error && <p className="text-rose-400 text-xs mt-3">{error}</p>}
+
+      <button onClick={submit}
+        className="mt-4 bg-amber-200 text-neutral-900 rounded-lg px-5 py-2.5 text-sm font-medium hover:bg-amber-100 flex items-center gap-2">
+        <Sparkles className="w-4 h-4" /> {isStory ? 'Generate 5 story versions' : 'Generate angles'}
+      </button>
+    </div>
+  );
+}
+
+/* ============================== COMMENTS ============================== */
+
+function CommentBox({ onSubmit }) {
+  const [draft, setDraft] = useState('');
+  const [showMentions, setShowMentions] = useState(false);
+  const [query, setQuery] = useState('');
+  const ref = useRef(null);
+
+  function handleChange(e) {
+    const val = e.target.value;
+    setDraft(val);
+    const m = val.match(/@([A-Za-z]*)$/);
+    if (m) { setShowMentions(true); setQuery(m[1].toLowerCase()); } else { setShowMentions(false); }
+  }
+  function pick(name) {
+    setDraft((d) => d.replace(/@([A-Za-z]*)$/, '@' + name + ' '));
+    setShowMentions(false);
+    ref.current?.focus();
+  }
+  function submit() {
+    if (!draft.trim()) return;
+    onSubmit(draft.trim());
+    setDraft('');
+    setShowMentions(false);
+  }
+  const suggestions = ALL_USERS.filter((n) => n.toLowerCase().startsWith(query));
+
+  return (
+    <div className="relative mt-2">
+      {showMentions && suggestions.length > 0 && (
+        <div className="absolute bottom-full mb-1 left-0 bg-neutral-800 border border-neutral-700 rounded-lg shadow-xl overflow-hidden z-20 w-40">
+          {suggestions.map((n) => (
+            <button key={n} onClick={() => pick(n)} className="flex items-center gap-2 w-full text-left px-3 py-2 text-sm text-neutral-200 hover:bg-neutral-700">
+              <Avatar name={n} size="w-5 h-5 text-xs" /> {n}
+            </button>
+          ))}
+        </div>
+      )}
+      <div className="flex gap-2">
+        <input
+          ref={ref}
+          value={draft}
+          onChange={handleChange}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submit(); } }}
+          placeholder="Write a comment or @mention someone…"
+          className="flex-1 bg-neutral-950 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-100 placeholder-neutral-600 outline-none focus:border-amber-500"
+        />
+        <button onClick={submit} className="px-3 py-2 bg-amber-200 text-neutral-900 rounded-lg hover:bg-amber-100">
+          <Send className="w-4 h-4" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function CommentThread({ post, currentUser, onAddComment, onOpen }) {
+  const [open, setOpen] = useState(false);
+  const comments = post.comments || [];
+
+  function toggle() {
+    const next = !open;
+    setOpen(next);
+    if (next) onOpen(post.id);
+  }
+
+  return (
+    <div className="mt-4 pt-3 border-t border-neutral-800">
+      <button onClick={toggle} className="flex items-center gap-1.5 text-xs text-neutral-500 hover:text-neutral-300">
+        <MessageCircle className="w-3.5 h-3.5" /> Comments {comments.length > 0 && `(${comments.length})`}
+        {open ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+      </button>
+      {open && (
+        <div className="mt-3">
+          <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+            {comments.length === 0 && <p className="text-neutral-700 text-xs italic">No comments yet — leave an idea or note.</p>}
+            {comments.map((c) => (
+              <div key={c.id} className="flex gap-2 items-start">
+                <Avatar name={c.author} size="w-6 h-6 text-xs" />
+                <div className="flex-1 bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2">
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-xs font-medium text-neutral-300">{c.author}</span>
+                    <span className="text-xs text-neutral-700">{timeAgo(c.createdAt)}</span>
+                  </div>
+                  <p className="text-sm text-neutral-200 mt-0.5 whitespace-pre-wrap break-words">{renderMentions(c.text)}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+          <CommentBox onSubmit={(text) => onAddComment(post.id, text)} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ============================== POST CARD ============================== */
+
+function StoryBody({ post, canEdit, copiedHl, onEditField, onTogglePinHeadline, onToggleSuggestions, onFormat, onArchive, onCopyCaption, onAddSnippetImages, onRemoveSnippetImage, setLightbox, dragOver, setDragOver, uploadingSnippet, setUploadingSnippet }) {
+  const versions = post.storyVersions || {};
+  const keys = Object.keys(versions);
+  const pinned = post.pinnedHeadlines || [];
+  return (
+    <div>
+      {/* WORKING AREA — your story caption */}
+      {post.storyVersions && (
+        <div className="space-y-3 mb-4 bg-neutral-950 border border-purple-900/40 rounded-xl p-3">
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-xs uppercase tracking-wider text-neutral-500">Your story caption{pinned.length > 0 && <span className="text-neutral-600 normal-case tracking-normal"> · {pinned.length} pinned</span>}</label>
+              {canEdit && post.draftHeadline && (
+                <button onClick={() => onEditField(post.id, 'draftHeadline', '')} className="text-xs text-neutral-600 hover:text-rose-400">clear</button>
+              )}
+            </div>
+            <AutoTextarea value={post.draftHeadline || ''} disabled={!canEdit} minHeight={64}
+              onChange={(e) => onEditField(post.id, 'draftHeadline', e.target.value)}
+              placeholder={canEdit ? 'Pin versions below to collect them here, then rewrite into your final 2-line caption…' : ''}
+              className="w-full bg-neutral-950 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-100 placeholder-neutral-700 outline-none focus:border-amber-500 disabled:opacity-70" />
+          </div>
+
+          {/* SNIPPET */}
+          <div className="border-t border-neutral-800/70 pt-3">
+            <label className="text-xs uppercase tracking-wider text-neutral-500 mb-1.5 block">Snippet note</label>
+            <AutoTextarea value={post.snippetNote || ''} disabled={!canEdit} minHeight={44}
+              onChange={(e) => onEditField(post.id, 'snippetNote', e.target.value)}
+              placeholder={canEdit ? 'Your notes on the image to use…' : ''}
+              className="w-full bg-neutral-950 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-100 placeholder-neutral-700 outline-none focus:border-amber-500 disabled:opacity-70" />
+
+            {canEdit ? (
+              <div
+                onDragOver={(e) => { e.preventDefault(); if (!dragOver) setDragOver(true); }}
+                onDragLeave={(e) => { e.preventDefault(); setDragOver(false); }}
+                onDrop={async (e) => { e.preventDefault(); setDragOver(false); const files = e.dataTransfer.files; if (!files || !files.length) return; setUploadingSnippet(true); await onAddSnippetImages(post.id, files); setUploadingSnippet(false); }}
+                className={"mt-2.5 rounded-lg border border-dashed transition-colors p-3 " + (dragOver ? "border-amber-500 bg-amber-500/10" : "border-neutral-700")}>
+                {(post.snippetImages && post.snippetImages.length > 0) && (
+                  <div className="flex flex-wrap gap-2 mb-2.5">
+                    {post.snippetImages.map((src, i) => (
+                      <div key={i} className="relative">
+                        <img src={src} alt="" onClick={() => setLightbox(src)} className="w-24 h-24 object-cover rounded-lg border border-neutral-700 cursor-zoom-in" />
+                        <button onClick={() => onRemoveSnippetImage(post.id, i)} className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-neutral-800 border border-neutral-600 text-neutral-300 text-xs flex items-center justify-center hover:bg-rose-700 hover:border-rose-600 hover:text-white">✕</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div className="flex items-center gap-3 flex-wrap">
+                  <span className="text-xs text-neutral-500">{uploadingSnippet ? <><Dots /> Adding…</> : (dragOver ? 'Drop photos here' : 'Drag photos here, or')}</span>
+                  {!uploadingSnippet && (
+                    <label className="text-xs border border-neutral-700 rounded-lg px-3 py-1.5 text-neutral-400 hover:border-amber-500 hover:text-amber-300 cursor-pointer inline-flex items-center gap-1.5">
+                      <ImageIcon className="w-3.5 h-3.5" /> Browse
+                      <input type="file" accept="image/*" multiple className="hidden"
+                        onChange={async (e) => { const files = e.target.files; e.target.value = ''; setUploadingSnippet(true); await onAddSnippetImages(post.id, files); setUploadingSnippet(false); }} />
+                    </label>
+                  )}
+                </div>
+              </div>
+            ) : (
+              (post.snippetImages && post.snippetImages.length > 0) && (
+                <div className="flex flex-wrap gap-2 mt-2.5">
+                  {post.snippetImages.map((src, i) => (
+                    <img key={i} src={src} alt="" onClick={() => setLightbox(src)} className="w-24 h-24 object-cover rounded-lg border border-neutral-700 cursor-zoom-in" />
+                  ))}
+                </div>
+              )
+            )}
+          </div>
+
+          {canEdit && (
+            <div className="flex gap-2 flex-wrap items-center pt-1">
+              <button onClick={() => onFormat(post.id)}
+                disabled={!post.draftHeadline || post.formatting || post.status === 'archived'}
+                className="text-xs border border-amber-700 rounded-lg px-3 py-1.5 text-amber-300 hover:bg-amber-700 hover:text-neutral-900 disabled:opacity-40 flex items-center gap-1.5">
+                {post.formatting ? <><Dots /> {post.formatStatus || "Formatting…"}</> : <><Wand2 className="w-3.5 h-3.5" /> Format for publish</>}
+              </button>
+              {!post.draftHeadline && <span className="text-xs text-neutral-600">write or pin a caption to format</span>}
+              {post.isFormatted && !post.formatting && <span className="text-xs text-emerald-500">✓ ready to copy</span>}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* FORMATTED CAPTION OUTPUT */}
+      {post.isFormatted && post.formattedCaption && (
+        <div className="mb-4 bg-neutral-950 border border-amber-900 rounded-lg p-3">
+          <div className="text-xs uppercase tracking-wider text-neutral-600 mb-1">Final story caption</div>
+          <p className="text-sm text-neutral-100 leading-relaxed">{renderStoryMarkup(post.formattedCaption)}</p>
+          <div className="flex gap-2 mt-2">
+            <button onClick={onCopyCaption}
+              className="text-xs border border-neutral-700 rounded px-2.5 py-1 text-neutral-400 hover:border-amber-500 hover:text-amber-300 flex items-center gap-1.5">
+              {copiedHl ? <><Check className="w-3.5 h-3.5" /> Copied</> : <><Copy className="w-3.5 h-3.5" /> Copy caption</>}
+            </button>
+            {canEdit && post.status === 'active' && (
+              <button onClick={() => onArchive(post.id)}
+                className="text-xs border border-emerald-700 rounded-lg px-3 py-1.5 text-emerald-400 hover:bg-emerald-700 hover:text-neutral-900 flex items-center gap-1.5">
+                <Check className="w-3.5 h-3.5" /> Mark complete &amp; archive
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* OPTIONS — 5 story versions + suggested image */}
+      {post.storyVersions && post.status !== 'archived' && (
+        <div>
+          <button onClick={() => onToggleSuggestions(post.id)} className="text-xs text-neutral-500 hover:text-neutral-300 mb-2 flex items-center gap-1">
+            {post.suggestionsCollapsed ? '▸ Show suggestions' : '▾ Hide suggestions'}
+          </button>
+          {!post.suggestionsCollapsed && (
+            <div className="space-y-2">
+              {keys.map((k) => {
+                const v = String(versions[k] == null ? '' : versions[k]);
+                const isPinned = pinned.includes(v);
+                return (
+                  <div key={k} className="bg-neutral-950 border border-neutral-800 rounded-xl p-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="text-xs uppercase tracking-wider text-neutral-600 mb-1">{STORY_ANGLES.find((a) => a.key === k)?.label || k}</div>
+                        <div className="text-sm text-neutral-200 leading-relaxed">{renderStoryMarkup(v)}</div>
+                      </div>
+                      {canEdit && (
+                        <button onClick={() => onTogglePinHeadline(post.id, v)}
+                          className={"shrink-0 text-xs rounded px-2 py-1 border " + (isPinned ? "border-amber-500 text-amber-300 bg-amber-500/10" : "border-neutral-700 text-neutral-400 hover:border-amber-500 hover:text-amber-300")}>
+                          {isPinned ? "★ Pinned" : "☆ Pin"}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+              {post.snippetRec && (
+                <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-3">
+                  <div className="text-xs uppercase tracking-wider text-neutral-500 mb-1 flex items-center gap-1.5"><ImageIcon className="w-3.5 h-3.5" /> Suggested image</div>
+                  <div className="text-xs text-neutral-400 leading-relaxed whitespace-pre-wrap">{post.snippetRec}</div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PostCard({ post, currentUser, canEdit, onTogglePinHeadline, onTogglePinLead, onToggleSuggestions, onEditField, onAddSnippetImages, onRemoveSnippetImage, onFormat, onArchive, onRetry, onAddComment, onOpenComments }) {
+  const [showOriginal, setShowOriginal] = useState(false);
+  const [copiedHl, setCopiedHl] = useState(false);
+  const [lightbox, setLightbox] = useState(null);
+  const [uploadingSnippet, setUploadingSnippet] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
+  const [manualCopy, setManualCopy] = useState(null);
+  const manualRef = useRef(null);
+  function selectManual() {
+    const el = manualRef.current;
+    if (!el) return;
+    el.focus();
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }
+  useEffect(() => {
+    if (manualCopy !== null) {
+      const t = setTimeout(selectManual, 60);
+      return () => clearTimeout(t);
+    }
+  }, [manualCopy]);
+  const [copiedLead, setCopiedLead] = useState(false);
+  const angles = post.mode === 'photo' ? PHOTO_ANGLES : NEWS_ANGLES;
+  const pinnedHeadlines = post.pinnedHeadlines || [];
+  const pinnedLeads = post.pinnedLeads || [];
+
+  async function copy(which) {
+    let html, plain;
+    if (which === 'hl') {
+      html = storyMarkupToHtml(post.formattedHeadline || '');
+      plain = stripStoryMarkup(post.formattedHeadline || '');
+    } else {
+      html = escapeHtml(stripStoryMarkup(post.formattedLead || '')).replace(/\n/g, '<br>');
+      plain = stripStoryMarkup(post.formattedLead || '');
+    }
+    // Only the native Clipboard API reliably carries HTML (bold) into Excel/Sheets.
+    // execCommand can silently downgrade to plain text, so if the native API isn't
+    // available (e.g. this sandboxed preview) we open the manual rich modal instead —
+    // that guarantees the bold survives the paste.
+    let ok = false;
+    try {
+      if (navigator.clipboard && window.ClipboardItem && window.isSecureContext) {
+        await navigator.clipboard.write([new window.ClipboardItem({
+          'text/html': new Blob([html], { type: 'text/html' }),
+          'text/plain': new Blob([plain], { type: 'text/plain' }),
+        })]);
+        ok = true;
+      }
+    } catch (e) { ok = false; }
+
+    if (ok) {
+      if (which === 'hl') { setCopiedHl(true); setTimeout(() => setCopiedHl(false), 1800); }
+      else { setCopiedLead(true); setTimeout(() => setCopiedLead(false), 1800); }
+    } else {
+      setManualCopy({ html, text: plain });
+    }
+  }
+
+  async function copyStoryCaption() {
+    const html = storyMarkupToHtml(post.formattedCaption || '');
+    const plain = stripStoryMarkup(post.formattedCaption || '');
+    let ok = false;
+    try {
+      if (navigator.clipboard && window.ClipboardItem && window.isSecureContext) {
+        await navigator.clipboard.write([new window.ClipboardItem({
+          'text/html': new Blob([html], { type: 'text/html' }),
+          'text/plain': new Blob([plain], { type: 'text/plain' }),
+        })]);
+        ok = true;
+      }
+    } catch (e) { ok = false; }
+    if (ok) { setCopiedHl(true); setTimeout(() => setCopiedHl(false), 1800); }
+    else { setManualCopy({ html, text: plain }); }
+  }
+
+  return (
+    <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-5 mb-4">
+      <div className="flex items-center justify-between mb-1">
+        <div className="flex items-center gap-2">
+          <Avatar name={post.author} />
+          <span className="text-sm text-neutral-300">{post.author}</span>
+          {post.kind === 'story'
+            ? <span className="text-xs px-2 py-0.5 rounded border border-neutral-700 bg-neutral-800 text-neutral-400">Story</span>
+            : <ModeBadge mode={post.mode} />}
+          {post.status === 'archived' && (
+            <span className="text-xs px-2 py-0.5 rounded bg-neutral-800 border border-neutral-700 text-neutral-500 flex items-center gap-1">
+              <ArchiveIcon className="w-3 h-3" /> Archived
+            </span>
+          )}
+        </div>
+        <span className="text-xs text-neutral-600">{timeAgo(post.createdAt)}</span>
+      </div>
+
+      <button onClick={() => setShowOriginal((v) => !v)} className="text-xs text-neutral-600 hover:text-neutral-300 mb-2">
+        {showOriginal ? '▾ Hide original input' : '▸ View original input'}
+      </button>
+      {showOriginal && (
+        <div className="bg-neutral-950 border border-neutral-800 rounded-lg p-3 mb-3 text-xs text-neutral-500 whitespace-pre-wrap">
+          {post.rawInput}
+          {post.intrigue && <div className="mt-2 text-amber-500">{post.kind === 'story' ? 'Hook' : 'Intrigue'}: {post.intrigue}</div>}
+        </div>
+      )}
+
+      {/* GENERATING / ERROR STATE (shared) */}
+      {post.generating && (
+        <div className="flex items-center gap-2 text-sm text-neutral-500 py-4">
+          <Dots /> {post.genStatus || (post.kind === 'story' ? 'Generating story versions…' : 'Generating headlines…')}
+        </div>
+      )}
+      {!post.generating && post.genError && (
+        <div className="text-sm text-rose-400 py-3">
+          Still failed after 3 automatic attempts: {post.genError}
+          {canEdit && (
+            <button onClick={() => onRetry(post.id)}
+              className="ml-3 text-xs border border-neutral-700 rounded px-2 py-1 text-neutral-400 hover:border-amber-500 hover:text-amber-300">
+              Retry
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* ============ STORY BODY ============ */}
+      {post.kind === 'story' && !post.generating && !post.genError && (
+        <StoryBody post={post} canEdit={canEdit} copiedHl={copiedHl}
+          onEditField={onEditField} onTogglePinHeadline={onTogglePinHeadline}
+          onToggleSuggestions={onToggleSuggestions} onFormat={onFormat} onArchive={onArchive}
+          onCopyCaption={copyStoryCaption} onAddSnippetImages={onAddSnippetImages}
+          onRemoveSnippetImage={onRemoveSnippetImage} setLightbox={setLightbox}
+          dragOver={dragOver} setDragOver={setDragOver} uploadingSnippet={uploadingSnippet} setUploadingSnippet={setUploadingSnippet} />
+      )}
+
+      {/* ============ POST BODY ============ */}
+      {post.kind !== 'story' && (<>
+      
+      {/* WORKING AREA — your own headline & lead (pinned suggestions land here to edit) */}
+      {!post.generating && !post.genError && post.angles && (
+        <div className="space-y-3 mb-4 bg-neutral-950 border border-amber-900/40 rounded-xl p-3">
+          {/* Draft */}
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-xs uppercase tracking-wider text-neutral-500">Your headline{pinnedHeadlines.length > 0 && <span className="text-neutral-600 normal-case tracking-normal"> · {pinnedHeadlines.length} pinned</span>}</label>
+              {canEdit && post.draftHeadline && (
+                <button onClick={() => onEditField(post.id, 'draftHeadline', '')} className="text-xs text-neutral-600 hover:text-rose-400">clear</button>
+              )}
+            </div>
+            <AutoTextarea value={post.draftHeadline || ''} disabled={!canEdit} minHeight={56}
+              onChange={(e) => onEditField(post.id, 'draftHeadline', e.target.value)}
+              placeholder={canEdit ? 'Pin headlines below to collect them here, then rewrite into your final version…' : ''}
+              className="w-full bg-neutral-950 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-100 placeholder-neutral-700 outline-none focus:border-amber-500 disabled:opacity-70" />
+          </div>
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-xs uppercase tracking-wider text-neutral-500">Your social lead{pinnedLeads.length > 0 && <span className="text-neutral-600 normal-case tracking-normal"> · {pinnedLeads.length} pinned</span>}</label>
+              {canEdit && post.draftLead && (
+                <button onClick={() => onEditField(post.id, 'draftLead', '')} className="text-xs text-neutral-600 hover:text-rose-400">clear</button>
+              )}
+            </div>
+            <AutoTextarea value={post.draftLead || ''} disabled={!canEdit} minHeight={88}
+              onChange={(e) => onEditField(post.id, 'draftLead', e.target.value)}
+              placeholder={canEdit ? 'Pin leads below to collect them here, then rewrite into your final version…' : ''}
+              className="w-full bg-neutral-950 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-100 placeholder-neutral-700 outline-none focus:border-amber-500 disabled:opacity-70" />
+          </div>
+
+          {/* SNIPPET — post image idea + reference photos */}
+          <div className="border-t border-neutral-800/70 pt-3">
+            <label className="text-xs uppercase tracking-wider text-neutral-500 mb-1.5 block flex items-center gap-1.5">
+              <ImageIcon className="w-3.5 h-3.5" /> Snippet — post image &amp; idea
+            </label>
+            <AutoTextarea value={post.snippetNote || ''} disabled={!canEdit} minHeight={52}
+              onChange={(e) => onEditField(post.id, 'snippetNote', e.target.value)}
+              placeholder={canEdit ? 'Describe the snippet idea — what the image should show, mood, which photo to use…' : ''}
+              className="w-full bg-neutral-950 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-100 placeholder-neutral-700 outline-none focus:border-amber-500 disabled:opacity-70" />
+
+            {canEdit ? (
+              <div
+                onDragOver={(e) => { e.preventDefault(); if (!dragOver) setDragOver(true); }}
+                onDragLeave={(e) => { e.preventDefault(); setDragOver(false); }}
+                onDrop={async (e) => {
+                  e.preventDefault();
+                  setDragOver(false);
+                  const files = e.dataTransfer.files;
+                  if (!files || !files.length) return;
+                  setUploadingSnippet(true);
+                  await onAddSnippetImages(post.id, files);
+                  setUploadingSnippet(false);
+                }}
+                className={"mt-2.5 rounded-lg border border-dashed transition-colors p-3 " + (dragOver ? "border-amber-500 bg-amber-500/10" : "border-neutral-700")}>
+                {(post.snippetImages && post.snippetImages.length > 0) && (
+                  <div className="flex flex-wrap gap-2 mb-2.5">
+                    {post.snippetImages.map((src, i) => (
+                      <div key={i} className="relative group">
+                        <img src={src} alt={`snippet ${i + 1}`} onClick={() => setLightbox(src)}
+                          className="w-24 h-24 object-cover rounded-lg border border-neutral-700 cursor-zoom-in" />
+                        <button onClick={() => onRemoveSnippetImage(post.id, i)} title="Remove"
+                          className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-neutral-800 border border-neutral-600 text-neutral-300 text-xs flex items-center justify-center hover:bg-rose-700 hover:border-rose-600 hover:text-white">✕</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div className="flex items-center gap-3 flex-wrap">
+                  <span className="text-xs text-neutral-500">
+                    {uploadingSnippet ? <><Dots /> Adding…</> : (dragOver ? 'Drop photos here' : 'Drag photos here, or')}
+                  </span>
+                  {!uploadingSnippet && (
+                    <label className="text-xs border border-neutral-700 rounded-lg px-3 py-1.5 text-neutral-400 hover:border-amber-500 hover:text-amber-300 cursor-pointer inline-flex items-center gap-1.5">
+                      <ImageIcon className="w-3.5 h-3.5" /> Browse
+                      <input type="file" accept="image/*" multiple className="hidden"
+                        onChange={async (e) => {
+                          const files = e.target.files;
+                          e.target.value = '';
+                          setUploadingSnippet(true);
+                          await onAddSnippetImages(post.id, files);
+                          setUploadingSnippet(false);
+                        }} />
+                    </label>
+                  )}
+                </div>
+              </div>
+            ) : (
+              (post.snippetImages && post.snippetImages.length > 0) && (
+                <div className="flex flex-wrap gap-2 mt-2.5">
+                  {post.snippetImages.map((src, i) => (
+                    <img key={i} src={src} alt={`snippet ${i + 1}`} onClick={() => setLightbox(src)}
+                      className="w-24 h-24 object-cover rounded-lg border border-neutral-700 cursor-zoom-in" />
+                  ))}
+                </div>
+              )
+            )}
+          </div>
+
+          {canEdit && (
+            <div className="flex gap-2 flex-wrap items-center pt-1">
+              <button onClick={() => onFormat(post.id)}
+                disabled={!post.draftHeadline || !post.draftLead || post.formatting || post.status === 'archived'}
+                className="text-xs border border-amber-700 rounded-lg px-3 py-1.5 text-amber-300 hover:bg-amber-700 hover:text-neutral-900 disabled:opacity-40 flex items-center gap-1.5">
+                {post.formatting ? <><Dots /> {post.formatStatus || "Formatting…"}</> : <><Wand2 className="w-3.5 h-3.5" /> Format for publish</>}
+              </button>
+              {(!post.draftHeadline || !post.draftLead) && <span className="text-xs text-neutral-600">fill in both a headline and a lead to format</span>}
+              {post.isFormatted && !post.formatting && <span className="text-xs text-emerald-500">✓ ready to copy</span>}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* FORMATTED OUTPUT */}
+      {post.isFormatted && (
+        <div className="space-y-2 pt-1 mb-4">
+          <div className="bg-neutral-950 border border-amber-900 rounded-lg p-3">
+            <div className="text-xs uppercase tracking-wider text-neutral-600 mb-1">Final headline</div>
+            <p className="text-sm text-neutral-100 leading-relaxed">{renderStoryMarkup(post.formattedHeadline)}</p>
+            <button onClick={() => copy('hl')}
+              className="mt-2 text-xs border border-neutral-700 rounded px-2.5 py-1 text-neutral-400 hover:border-amber-500 hover:text-amber-300 flex items-center gap-1.5">
+              {copiedHl ? <><Check className="w-3.5 h-3.5" /> Copied</> : <><Copy className="w-3.5 h-3.5" /> Copy headline</>}
+            </button>
+          </div>
+          <div className="bg-neutral-950 border border-neutral-700 rounded-lg p-3">
+            <div className="text-xs uppercase tracking-wider text-neutral-600 mb-1">Final social lead</div>
+            <p className="text-sm text-neutral-200 leading-relaxed whitespace-pre-wrap">{stripStoryMarkup(post.formattedLead)}</p>
+            <button onClick={() => copy('lead')}
+              className="mt-2 text-xs border border-neutral-700 rounded px-2.5 py-1 text-neutral-400 hover:border-amber-500 hover:text-amber-300 flex items-center gap-1.5">
+              {copiedLead ? <><Check className="w-3.5 h-3.5" /> Copied</> : <><Copy className="w-3.5 h-3.5" /> Copy lead</>}
+            </button>
+          </div>
+          {canEdit && post.status === 'active' && (
+            <button onClick={() => onArchive(post.id)}
+              className="text-xs border border-emerald-700 rounded-lg px-3 py-1.5 text-emerald-400 hover:bg-emerald-700 hover:text-neutral-900 flex items-center gap-1.5">
+              <Check className="w-3.5 h-3.5" /> Mark complete &amp; archive
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* SUGGESTIONS — collapsible; pin multiple headlines and leads into the shortlist above */}
+      {!post.generating && !post.genError && post.angles && post.status !== 'archived' && (
+        <div>
+          <button onClick={() => onToggleSuggestions(post.id)} className="text-xs text-neutral-500 hover:text-neutral-300 mb-2 flex items-center gap-1">
+            {post.suggestionsCollapsed
+              ? <><ChevronDown className="w-3.5 h-3.5" /> Show all suggestions</>
+              : <><ChevronUp className="w-3.5 h-3.5" /> Hide all suggestions</>}
+          </button>
+
+          {!post.suggestionsCollapsed && (
+            <div className="space-y-3">
+              {angles.map((a) => {
+                const lead = post.leadByAngle?.[a.key];
+                const lPinned = lead && pinnedLeads.includes(lead);
+                return (
+                  <div key={a.key} className="bg-neutral-950 border border-neutral-800 rounded-xl p-3">
+                    <div className="text-xs uppercase tracking-wider text-neutral-500 mb-2 flex items-center gap-2">
+                      <span>{a.icon}</span>{a.label}
+                    </div>
+                    {(post.angles?.[a.key] || []).map((h, i) => {
+                      const hPinned = pinnedHeadlines.includes(h);
+                      return (
+                        <div key={i} className="flex items-start justify-between gap-3 py-2 border-b border-neutral-900 last:border-b-0">
+                          <span className="text-sm block text-neutral-200 leading-relaxed">{renderStoryMarkup(h)}</span>
+                          {canEdit && (
+                            <button onClick={() => onTogglePinHeadline(post.id, h)}
+                              className={"shrink-0 text-xs rounded px-2 py-1 border " + (hPinned ? "border-amber-500 text-amber-300 bg-amber-500/10" : "border-neutral-700 text-neutral-400 hover:border-amber-500 hover:text-amber-300")}>
+                              {hPinned ? "★ Pinned" : "☆ Pin headline"}
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                    {/* One lead for the whole angle */}
+                    <div className="mt-2.5 pt-2.5 border-t border-neutral-800/70">
+                      {lead ? (
+                        <div className="flex items-start justify-between gap-3">
+                          <span className="text-xs block leading-relaxed text-amber-200/70">{stripStoryMarkup(lead)}</span>
+                          {canEdit && (
+                            <button onClick={() => onTogglePinLead(post.id, lead)}
+                              className={"shrink-0 text-xs rounded px-2 py-1 border " + (lPinned ? "border-amber-500 text-amber-300 bg-amber-500/10" : "border-neutral-800 text-neutral-500 hover:border-amber-500 hover:text-amber-300")}>
+                              {lPinned ? "★ Pinned" : "☆ Pin lead"}
+                            </button>
+                          )}
+                        </div>
+                      ) : post.leadsLoading ? (
+                        <div className="text-xs text-neutral-600 italic flex items-center gap-1.5"><Dots /> writing lead…</div>
+                      ) : (
+                        <div className="text-xs text-neutral-700 italic">No lead for this angle — pin one from another angle, or write your own above.</div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+      </>)}
+
+      <CommentThread post={post} currentUser={currentUser} onAddComment={onAddComment} onOpen={onOpenComments} />
+
+      {manualCopy !== null && (
+        <div onClick={() => setManualCopy(null)}
+          className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-6">
+          <div onClick={(e) => e.stopPropagation()} className="bg-neutral-900 border border-neutral-700 rounded-xl p-4 max-w-lg w-full">
+            <div className="text-sm text-neutral-300 mb-2">Auto-copy is blocked in this preview. Click <b>Select all</b>, then copy (Ctrl/Cmd+C) — bold and emoji are preserved when you paste into Excel.</div>
+            <div
+              ref={manualRef}
+              contentEditable
+              suppressContentEditableWarning
+              onFocus={selectManual}
+              className="w-full bg-neutral-950 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-100 outline-none min-h-20 leading-relaxed"
+              dangerouslySetInnerHTML={{ __html: manualCopy.html }}
+            />
+            <div className="flex justify-end gap-2 mt-2">
+              <button onClick={selectManual} className="text-xs border border-amber-700 rounded-lg px-3 py-1.5 text-amber-300 hover:bg-amber-700 hover:text-neutral-900">Select all</button>
+              <button onClick={() => setManualCopy(null)} className="text-xs border border-neutral-700 rounded-lg px-3 py-1.5 text-neutral-400 hover:border-neutral-500 hover:text-neutral-200">Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {lightbox && (
+        <div onClick={() => setLightbox(null)}
+          className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-6 cursor-zoom-out">
+          <img src={lightbox} alt="snippet preview" className="max-w-full max-h-full rounded-lg shadow-2xl" />
+          <button onClick={() => setLightbox(null)}
+            className="absolute top-4 right-4 w-9 h-9 rounded-full bg-neutral-800/80 border border-neutral-600 text-neutral-200 flex items-center justify-center hover:bg-neutral-700">
+            <XIcon className="w-5 h-5" />
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ============================== NOTIFICATIONS ============================== */
+
+function getUnreadItems(posts, lastSeen, user) {
+  const seen = lastSeen[user] || {};
+  const items = [];
+  posts.forEach((post) => {
+    if (post.status === 'archived') return; // notifications only for active posts/stories
+    (post.comments || []).forEach((c) => {
+      if (c.author === user) return;
+      const relevant = (c.mentions || []).includes(user) || post.author === user;
+      if (!relevant) return;
+      const threshold = seen[post.id] || post.createdAt;
+      if (new Date(c.createdAt) > new Date(threshold)) items.push({ post, comment: c });
+    });
+  });
+  items.sort((a, b) => new Date(b.comment.createdAt) - new Date(a.comment.createdAt));
+  return items;
+}
+
+function NotificationBell({ posts, lastSeen, currentUser, onJump }) {
+  const [open, setOpen] = useState(false);
+  const items = getUnreadItems(posts, lastSeen, currentUser);
+
+  return (
+    <div className="relative">
+      <button onClick={() => setOpen((v) => !v)} className="relative p-2 rounded-lg hover:bg-neutral-800 text-neutral-400">
+        <Bell className="w-4.5 h-4.5" />
+        {items.length > 0 && (
+          <span className="absolute -top-0.5 -right-0.5 bg-rose-600 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center leading-none">
+            {items.length > 9 ? '9+' : items.length}
+          </span>
+        )}
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full mt-2 w-80 bg-neutral-900 border border-neutral-800 rounded-xl shadow-xl max-h-96 overflow-y-auto z-30">
+          <div className="px-3 py-2 border-b border-neutral-800 text-xs uppercase tracking-wider text-neutral-500">Mentions &amp; replies</div>
+          {items.length === 0 && <p className="text-neutral-700 text-sm px-3 py-4 text-center">You're all caught up.</p>}
+          {items.map(({ post, comment }, i) => (
+            <button key={i} onClick={() => { onJump(post); setOpen(false); }}
+              className="w-full text-left px-3 py-2.5 hover:bg-neutral-800 border-b border-neutral-800 last:border-b-0 flex gap-2">
+              <Avatar name={comment.author} size="w-6 h-6 text-xs" />
+              <div className="flex-1 min-w-0">
+                <div className="text-xs text-neutral-400">
+                  <span className="text-neutral-200 font-medium">{comment.author}</span>{' '}
+                  {(comment.mentions || []).includes(currentUser) ? 'mentioned you' : `commented on ${post.author}'s post`}
+                </div>
+                <p className="text-sm text-neutral-300 truncate mt-0.5">{comment.text}</p>
+                <span className="text-xs text-neutral-700">{timeAgo(comment.createdAt)}</span>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ============================== APP ============================== */
+
+export default function App() {
+  const [currentUser, setCurrentUser] = useState(null);
+  const [posts, setPosts] = useState([]);
+  const [lastSeen, setLastSeen] = useState({});
+  const [activeBoard, setActiveBoard] = useState(null);
+  const [view, setView] = useState('active');
+  const [toast, setToast] = useState('');
+  const dirtyRef = useRef(new Set());
+  const debounceRef = useRef({});
+  const loadedRef = useRef(false);
+
+  const showToast = useCallback((msg) => { setToast(msg); setTimeout(() => setToast(''), 2400); }, []);
+
+  const refresh = useCallback(async () => {
+    try {
+      const { posts: postsById, lastSeen: lastSeenByUser } = await boardApi('getAll', {});
+      const remotePosts = Object.values(postsById || {});
+      setPosts((local) => {
+        const remoteIds = new Set(remotePosts.map((rp) => rp.id));
+        const merged = remotePosts.map((rp) => {
+          const lp = local.find((p) => p.id === rp.id);
+          // Keep the local copy if it has unsaved edits, or is mid-generation/mid-format
+          // locally (the remote copy may be stale/placeholder).
+          if (lp && (dirtyRef.current.has(rp.id) || lp.generating || lp.leadsLoading || lp.formatting)) {
+            return lp;
+          }
+          return rp;
+        });
+        // Keep local-only posts that haven't reached the backend yet
+        // (e.g. a placeholder mid-generation started on this tab).
+        const localOnly = local.filter((p) => !remoteIds.has(p.id));
+        return [...localOnly, ...merged].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+      });
+      if (lastSeenByUser) setLastSeen(lastSeenByUser);
+    } catch (e) {
+      // Transient network hiccup — keep whatever we have locally and just try again
+      // on the next poll tick rather than wiping the board.
+      console.error('refresh failed', e);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!currentUser) return;
+    if (!loadedRef.current) { loadedRef.current = true; refresh(); }
+    setActiveBoard((b) => b || (USERS.includes(currentUser) ? currentUser : USERS[0]));
+    const interval = setInterval(refresh, 4000);
+    return () => clearInterval(interval);
+  }, [currentUser, refresh]);
+
+  // Safety net: our own retry logic (3 attempts, generous per-call waits) should
+  // never take longer than ~4 minutes to either finish or fail with a visible
+  // error. If a post is STILL marked "generating" past a much longer ceiling —
+  // whatever the cause (a code path that didn't throw, a browser tab that got
+  // backgrounded and throttled, etc.) — force it into a clear failed state with
+  // a Retry button rather than leaving the person staring at a frozen spinner.
+  useEffect(() => {
+    const WATCHDOG_MS = 6 * 60 * 1000; // 6 minutes — for full generation (headlines/story + leads)
+    const FORMAT_WATCHDOG_MS = 4 * 60 * 1000; // 4 minutes — formatting is a single, smaller call
+    const iv = setInterval(() => {
+      const now = Date.now();
+      setPosts((prev) => {
+        let changed = false;
+        const next = prev.map((p) => {
+          if (p.generating && p.genStartedAt && (now - new Date(p.genStartedAt).getTime()) > WATCHDOG_MS) {
+            changed = true;
+            return { ...p, generating: false, genStatus: null, genError: 'This took far longer than expected and may have stalled. Tap Retry to try again.' };
+          }
+          if (p.formatting && p.formatStartedAt && (now - new Date(p.formatStartedAt).getTime()) > FORMAT_WATCHDOG_MS) {
+            changed = true;
+            setTimeout(() => showToast('Formatting stalled longer than expected — try again.'), 0);
+            return { ...p, formatting: false, formatStatus: null };
+          }
+          return p;
+        });
+        if (changed) {
+          next.forEach((p, i) => { if (p !== prev[i]) boardApi('savePost', { post: p }).catch(() => {}); });
+          return next;
+        }
+        return prev;
+      });
+    }, 15000);
+    return () => clearInterval(iv);
+  }, []);
+
+  // Saves ONLY the post(s) whose object reference actually changed, not the whole
+  // board. Since updaterFn (via .map) returns the SAME reference for every post it
+  // didn't touch, this reference diff naturally isolates exactly what changed — so
+  // two people editing two different posts at the same moment never overwrite each
+  // other's work. New posts (create) and edited posts both flow through this.
+  function persist(updaterFn) {
+    setPosts((prev) => {
+      const updated = updaterFn(prev);
+      updated.forEach((p) => {
+        const before = prev.find((x) => x.id === p.id);
+        if (before !== p) boardApi('savePost', { post: p }).catch((e) => console.error('Failed to save post', e));
+      });
+      prev.forEach((p) => {
+        if (!updated.find((x) => x.id === p.id)) boardApi('deletePost', { postId: p.id }).catch(() => {});
+      });
+      return updated;
+    });
+  }
+
+  function clearAllPosts() {
+    if (!window.confirm('Delete ALL posts and stories for everyone — active and archived? This cannot be undone.')) return;
+    setPosts([]);
+    setLastSeen({});
+    boardApi('clearAll', {}).catch((e) => console.error('Failed to clear board', e));
+    showToast('All posts cleared ✓');
+  }
+
+  // Turn a low-level request status into a human message on the post's card.
+  // These messages are shown to the user during generation so it's always clear
+  // whether they're simply queued behind other requests, or whether the API is
+  // overloaded and being retried automatically — never a silent hang.
+  function statusUpdater(postId, phase) {
+    return (code, info) => {
+      let msg;
+      if (code === 'queued') msg = `Queued behind other requests on this board (position ${info.position || 1}) — will start automatically…`;
+      else if (code === 'busy') msg = `High demand right now — retrying automatically in ${Math.round((info.waitMs || 1000) / 1000)}s (no action needed)…`;
+      else if (code === 'retrying') msg = phase === 'leads' ? 'Reconnecting to write leads…' : 'Reconnecting…';
+      else msg = phase === 'leads' ? 'Writing leads…' : (phase === 'story' ? 'Generating story versions…' : 'Generating headlines…');
+      setPosts((prev) => prev.map((p) => p.id === postId ? { ...p, genStatus: msg } : p));
+    };
+  }
+
+  // Same idea as statusUpdater, but for the "Format for publish" step, writing to
+  // its own formatStatus field so it doesn't collide with generation status.
+  function formatStatusUpdater(postId) {
+    return (code, info) => {
+      let msg;
+      if (code === 'queued') msg = `Queued behind other requests (position ${info.position || 1})…`;
+      else if (code === 'busy') msg = `High demand — retrying automatically in ${Math.round((info.waitMs || 1000) / 1000)}s…`;
+      else if (code === 'retrying') msg = 'Reconnecting…';
+      else msg = 'Formatting…';
+      setPosts((prev) => prev.map((p) => p.id === postId ? { ...p, formatStatus: msg } : p));
+    };
+  }
+
+  // Generic auto-retry wrapper: retries `fn` a few times with backoff before
+  // giving up, so a transient overload (e.g. several people generating at once)
+  // resolves itself without the person needing to tap Retry themselves.
+  async function withAutoRetry(fn, { maxRetries = 2, delays = [8000, 20000], onRetry } = {}) {
+    let attempt = 0;
+    while (true) {
+      try {
+        return await fn(attempt);
+      } catch (e) {
+        if (attempt >= maxRetries) throw e;
+        const delay = delays[attempt] ?? delays[delays.length - 1];
+        if (onRetry) onRetry(attempt + 1, maxRetries + 1, delay, e);
+        await _sleep(delay);
+        attempt++;
+      }
+    }
+  }
+
+  async function runGenerationCore(postId, form) {
+    {
+      const prompt = form.mode === 'photo' ? PHOTO_PROMPT : NEWS_PROMPT;
+      let msg = `SOURCE MATERIAL (this may be a raw headline, pasted article text, a URL, or just a topic — you have no ability to open links, so work only with the text below, even if it's just a URL):\n\n${form.rawInput}`;
+      if (form.intrigue) msg += `\n\n---\nINTRIGUE — build every headline around this hook:\n"${form.intrigue}"`;
+      if (form.mode === 'photo') {
+        const count = form.photoCount || '30+';
+        msg += `\n\nPHOTO ARTICLE PARAMETERS:\n- Photo count: ${count}\n- Subtype: ${form.photoSubtype}\nEvery headline must end with "${count}" plus a fitting descriptor and PHOTOS/PICS.`;
+      }
+      const rawAngles = await callClaude(prompt, msg, 6000, 30000, 'claude-sonnet-4-6', statusUpdater(postId, 'headlines'));
+
+      // Real person names mentioned in the source material — used below as a
+      // deterministic safety net to strip any highlight the model incorrectly put
+      // on a name, since the prompt's hard ban alone doesn't always hold.
+      const namesInInput = Array.isArray(rawAngles?.names_in_input) ? rawAngles.names_in_input.filter((n) => typeof n === 'string' && n.trim()) : [];
+
+      // Models sometimes return each headline as an object ({headline:"..."} / {text:"..."})
+      // instead of a plain string, which renders as "[object Object]". Coerce everything to strings.
+      function toHeadlineString(item) {
+        if (typeof item === 'string') return item;
+        if (item && typeof item === 'object') {
+          return String(item.headline || item.text || item.title || item.value || Object.values(item).find((v) => typeof v === 'string') || '');
+        }
+        return item == null ? '' : String(item);
+      }
+      const angles = {};
+      Object.keys(rawAngles || {}).forEach((k) => {
+        if (k === 'names_in_input') return;
+        const arr = Array.isArray(rawAngles[k]) ? rawAngles[k] : [];
+        angles[k] = arr.map(toHeadlineString).filter((s) => s.trim() !== '').map((h) => stripNameHighlights(h, namesInInput));
+      });
+      const angleKeys = Object.keys(angles);
+
+      // Show the headlines immediately (leads fill in a moment later) so the user
+      // isn't blocked watching a spinner while leads generate.
+      persist((prev) => prev.map((p) => p.id === postId ? { ...p, angles, namesInInput, leadByAngle: {}, generating: false, genStatus: null, leadsLoading: true } : p));
+
+      // ONE request for all angle leads (one lead per angle, not per headline).
+      // Keeps requests-per-post at 2 and the response short.
+      // This gets its OWN short auto-retry (separate from the headlines' retry) so a
+      // transient overload doesn't force headlines to regenerate too, and doesn't
+      // just silently give up on the first hiccup either.
+      async function fetchAngleLeads() {
+        const payload = {};
+        angleKeys.forEach((k) => { payload[k] = angles[k] || []; });
+        try {
+          const r = await withAutoRetry(
+            () => callClaude(
+              ANGLE_LEADS_PROMPT,
+              `For EACH angle below, write ONE social lead that fits that angle's intrigue (it should work with any of that angle's headlines). Return JSON with the same keys, each a single lead string.${form.intrigue ? `\n\nCORE INTRIGUE for the whole post: "${form.intrigue}"` : ''}\n\n${JSON.stringify(payload, null, 2)}`,
+              1200, 30000, 'claude-haiku-4-5-20251001', statusUpdater(postId, 'leads')
+            ),
+            {
+              maxRetries: 2,
+              delays: [4000, 10000],
+              onRetry: (attempt, totalAttempts, delay) => {
+                const msg = `Leads didn't come through — retrying automatically in ${Math.round(delay / 1000)}s (attempt ${attempt + 1} of ${totalAttempts})…`;
+                setPosts((prev) => prev.map((p) => p.id === postId ? { ...p, genStatus: msg } : p));
+              },
+            }
+          );
+          const out = {};
+          angleKeys.forEach((k) => {
+            const v = r[k];
+            let lead = typeof v === 'string' ? v
+              : Array.isArray(v) ? (v.find((x) => typeof x === 'string') || '')
+              : (v && typeof v === 'object' ? String(v.lead || v.text || '') : '');
+            out[k] = lead.replace(/\*\*/g, '').replace(/~~/g, ''); // leads are plain text — never show raw markup
+          });
+          return out;
+        } catch (e) {
+          // Leads failed after 3 automatic attempts — fall back to blank leads rather
+          // than blocking the post. Headlines are already visible; the UI already
+          // invites the researcher to pin a lead from another angle or write their own.
+          const out = {};
+          angleKeys.forEach((k) => { out[k] = ''; });
+          return out;
+        }
+      }
+
+      const leadByAngle = await fetchAngleLeads();
+      persist((prev) => prev.map((p) => p.id === postId ? { ...p, leadByAngle, leadsLoading: false } : p));
+    }
+  }
+
+  async function runStoryGenerationCore(postId, form) {
+    {
+      let msg = `SOURCE MATERIAL (raw headline, pasted text, a URL, or a topic — you cannot open links, work only from the text below):\n\n${form.rawInput}`;
+      if (form.intrigue) msg += `\n\n---\nCORE HOOK to build every version around:\n"${form.intrigue}"`;
+      const [rawVersions, snippet] = await Promise.all([
+        callClaude(STORY_GEN_PROMPT, msg, 3500, 30000, 'claude-sonnet-4-6', statusUpdater(postId, 'story')),
+        callClaude(STORY_SNIPPET_PROMPT, msg, 500, 30000, 'claude-haiku-4-5-20251001').then((r) => {
+          const rec = r && r.recommendation;
+          return typeof rec === 'string' ? rec : (rec ? JSON.stringify(rec) : '');
+        }).catch(() => ''),
+      ]);
+      // Coerce every version to a plain string so rendering can never crash on non-strings.
+      const namesInInput = Array.isArray(rawVersions?.names_in_input) ? rawVersions.names_in_input.filter((n) => typeof n === 'string' && n.trim()) : [];
+      const versions = {};
+      if (rawVersions && typeof rawVersions === 'object') {
+        Object.keys(rawVersions).forEach((k) => {
+          if (k === 'names_in_input') return;
+          const val = rawVersions[k];
+          const str = typeof val === 'string' ? val
+            : Array.isArray(val) ? val.filter((x) => typeof x === 'string').join('\n')
+            : (val == null ? '' : String(val));
+          versions[k] = stripNameHighlights(str, namesInInput);
+        });
+      }
+      persist((prev) => prev.map((p) => p.id === postId ? { ...p, storyVersions: versions, namesInInput, snippetRec: snippet, generating: false } : p));
+    }
+  }
+
+  // Public entry point for generation. Wraps the core logic in auto-retry: if a
+  // request ultimately fails (e.g. the API stayed overloaded past its own internal
+  // retry budget, or the response came back malformed), this restarts the whole
+  // generation automatically up to 2 more times with backoff before it ever shows
+  // the person an error — so under heavy simultaneous load (several people
+  // generating at once) the person doesn't have to sit there tapping Retry.
+  async function runGeneration(postId, form) {
+    setPosts((prev) => prev.map((p) => p.id === postId ? { ...p, genStartedAt: new Date().toISOString() } : p));
+    try {
+      await withAutoRetry(
+        () => (form.kind === 'story' ? runStoryGenerationCore(postId, form) : runGenerationCore(postId, form)),
+        {
+          maxRetries: 2,
+          delays: [8000, 20000],
+          onRetry: (attempt, totalAttempts, delay) => {
+            const msg = `Didn't go through — retrying automatically in ${Math.round(delay / 1000)}s (attempt ${attempt + 1} of ${totalAttempts})…`;
+            setPosts((prev) => prev.map((p) => p.id === postId ? { ...p, generating: true, genError: null, genStatus: msg } : p));
+          },
+        }
+      );
+    } catch (e) {
+      persist((prev) => prev.map((p) => p.id === postId ? { ...p, generating: false, genStatus: null, genError: e.message } : p));
+    }
+  }
+
+  async function createPost(form) {
+    const postId = uid();
+    const base = {
+      id: postId, author: currentUser, kind: form.kind || 'post', rawInput: form.rawInput, intrigue: form.intrigue,
+      generating: true, genError: null, genStartedAt: new Date().toISOString(),
+      pinnedHeadlines: [], draftHeadline: '', suggestionsCollapsed: false,
+      snippetNote: '', snippetImages: [],
+      isFormatted: false, formatting: false,
+      status: 'active', comments: [], createdAt: new Date().toISOString(),
+    };
+    const placeholder = form.kind === 'story'
+      ? { ...base, storyVersions: null, snippetRec: '', formattedCaption: null }
+      : { ...base, mode: form.mode, photoCount: form.photoCount, photoSubtype: form.photoSubtype,
+          angles: null, leadByAngle: null, pinnedLeads: [], draftLead: '', formattedHeadline: null, formattedLead: null };
+    persist((prev) => [placeholder, ...prev]);
+    runGeneration(postId, form);
+  }
+
+  function retryPost(postId) {
+    const post = posts.find((p) => p.id === postId);
+    if (!post) return;
+    persist((prev) => prev.map((p) => p.id === postId ? { ...p, generating: true, genError: null } : p));
+    runGeneration(postId, {
+      kind: post.kind, mode: post.mode, rawInput: post.rawInput, intrigue: post.intrigue,
+      photoCount: post.photoCount, photoSubtype: post.photoSubtype,
+    });
+  }
+
+  // Pin = drop the suggestion straight into the draft field (append), so it can be
+  // edited into the final version. Toggling off removes that exact block again.
+  function togglePinInto(postId, listKey, draftField, rawText) {
+    const text = listKey === 'pinnedHeadlines' ? rawText.replace(/\*\*/g, '').replace(/~~/g, '') : rawText; // headlines carry **bold**/~~yellow~~ markup — strip for editing
+    persist((prev) => prev.map((p) => {
+      if (p.id !== postId) return p;
+      const list = p[listKey] || [];
+      const has = list.includes(rawText);
+      const current = p[draftField] || '';
+      let nextDraft;
+      let nextList;
+      if (has) {
+        nextList = list.filter((t) => t !== rawText);
+        // remove the pinned block from the draft (and tidy blank lines)
+        nextDraft = current
+          .split(/\n{2,}/)
+          .filter((block) => block.trim() !== text.trim())
+          .join('\n\n')
+          .trim();
+      } else {
+        nextList = [...list, rawText];
+        nextDraft = current.trim() ? current.trimEnd() + '\n\n' + text : text;
+      }
+      return { ...p, [listKey]: nextList, [draftField]: nextDraft, isFormatted: false };
+    }));
+  }
+
+  function togglePinHeadline(postId, text) { togglePinInto(postId, 'pinnedHeadlines', 'draftHeadline', text); }
+  function togglePinLead(postId, text) { togglePinInto(postId, 'pinnedLeads', 'draftLead', text); }
+
+  function toggleSuggestions(postId) {
+    persist((prev) => prev.map((p) => p.id === postId ? { ...p, suggestionsCollapsed: !p.suggestionsCollapsed } : p));
+  }
+
+  function editField(postId, field, value) {
+    const resetsFormat = field === 'draftHeadline' || field === 'draftLead';
+    setPosts((prev) => prev.map((p) => p.id === postId ? { ...p, [field]: value, ...(resetsFormat ? { isFormatted: false } : {}) } : p));
+    // Mark this post dirty; it stays dirty (protected from refresh overwrite)
+    // until the debounced save below actually writes it to the backend.
+    dirtyRef.current.add(postId);
+    const dkey = postId + field;
+    clearTimeout(debounceRef.current[dkey]);
+    debounceRef.current[dkey] = setTimeout(() => {
+      setPosts((current) => {
+        const p = current.find((x) => x.id === postId);
+        if (p) boardApi('savePost', { post: p }).catch((e) => console.error('Failed to save post', e));
+        return current;
+      });
+      dirtyRef.current.delete(postId);
+    }, 700);
+  }
+
+  async function addSnippetImages(postId, fileList) {
+    const files = Array.from(fileList || []).filter((f) => f.type && f.type.startsWith('image/'));
+    if (!files.length) return;
+    try {
+      const dataUrls = [];
+      for (const f of files) {
+        try { dataUrls.push(await fileToResizedDataUrl(f)); }
+        catch (e) { /* skip unreadable file */ }
+      }
+      if (!dataUrls.length) { showToast('Could not read those images'); return; }
+      persist((prev) => prev.map((p) => p.id === postId ? { ...p, snippetImages: [...(p.snippetImages || []), ...dataUrls] } : p));
+    } catch (e) {
+      showToast('Image upload failed: ' + e.message);
+    }
+  }
+
+  function removeSnippetImage(postId, index) {
+    persist((prev) => prev.map((p) => p.id === postId ? { ...p, snippetImages: (p.snippetImages || []).filter((_, i) => i !== index) } : p));
+  }
+
+  async function formatPost(postId) {
+    const post = posts.find((p) => p.id === postId);
+    if (!post) return;
+    if (post.kind === 'story') {
+      if (!post.draftHeadline) return;
+      persist((prev) => prev.map((p) => p.id === postId ? { ...p, formatting: true, formatStatus: null, formatStartedAt: new Date().toISOString() } : p));
+      try {
+        const result = await withAutoRetry(
+          () => callClaude(STORY_FORMAT_PROMPT, `Story caption:\n"${post.draftHeadline}"`, 500, 30000, 'claude-sonnet-4-6', formatStatusUpdater(postId)),
+          {
+            maxRetries: 2,
+            delays: [5000, 12000],
+            onRetry: (attempt, totalAttempts, delay) => {
+              const msg = `Didn't go through — retrying automatically in ${Math.round(delay / 1000)}s (attempt ${attempt + 1} of ${totalAttempts})…`;
+              setPosts((prev) => prev.map((p) => p.id === postId ? { ...p, formatStatus: msg } : p));
+            },
+          }
+        );
+        persist((prev) => prev.map((p) => p.id === postId ? {
+          ...p, formattedCaption: stripNameHighlights(result.caption, post.namesInInput), isFormatted: true, formatting: false, formatStatus: null,
+        } : p));
+      } catch (e) {
+        persist((prev) => prev.map((p) => p.id === postId ? { ...p, formatting: false, formatStatus: null } : p));
+        showToast('Formatting failed after 3 automatic attempts: ' + e.message);
+      }
+      return;
+    }
+    if (!post.draftHeadline || !post.draftLead) return;
+    persist((prev) => prev.map((p) => p.id === postId ? { ...p, formatting: true, formatStatus: null, formatStartedAt: new Date().toISOString() } : p));
+    try {
+      const result = await withAutoRetry(
+        () => callClaude(FORMAT_PROMPT, `Headline: "${post.draftHeadline}"\nLead: "${post.draftLead}"`, 700, 30000, 'claude-sonnet-4-6', formatStatusUpdater(postId)),
+        {
+          maxRetries: 2,
+          delays: [5000, 12000],
+          onRetry: (attempt, totalAttempts, delay) => {
+            const msg = `Didn't go through — retrying automatically in ${Math.round(delay / 1000)}s (attempt ${attempt + 1} of ${totalAttempts})…`;
+            setPosts((prev) => prev.map((p) => p.id === postId ? { ...p, formatStatus: msg } : p));
+          },
+        }
+      );
+      persist((prev) => prev.map((p) => p.id === postId ? {
+        ...p, formattedHeadline: stripNameHighlights(result.headline, post.namesInInput), formattedLead: result.lead, isFormatted: true, formatting: false, formatStatus: null,
+      } : p));
+    } catch (e) {
+      persist((prev) => prev.map((p) => p.id === postId ? { ...p, formatting: false, formatStatus: null } : p));
+      showToast('Formatting failed after 3 automatic attempts: ' + e.message);
+    }
+  }
+
+  function archivePost(postId) {
+    persist((prev) => prev.map((p) => p.id === postId ? { ...p, status: 'archived', archivedAt: new Date().toISOString() } : p));
+    showToast('Archived ✓');
+  }
+
+  function addComment(postId, text) {
+    const comment = { id: uid(), author: currentUser, text, mentions: extractMentions(text), createdAt: new Date().toISOString() };
+    // Optimistic local update for instant feedback...
+    setPosts((prev) => prev.map((p) => p.id === postId ? { ...p, comments: [...(p.comments || []), comment] } : p));
+    // ...but save via a server-side atomic append rather than a full post overwrite,
+    // since a comment can land on someone ELSE's post — two people commenting on the
+    // same post at the same moment is the one real collision risk in this app, and
+    // this keeps that race window as small as possible (server does read+append+write
+    // in one step instead of relying on this browser's possibly-stale local copy).
+    boardApi('appendComment', { postId, comment }).then(({ post: serverPost }) => {
+      if (serverPost) setPosts((prev) => prev.map((p) => p.id === postId ? serverPost : p));
+    }).catch((e) => {
+      console.error('Failed to save comment', e);
+      showToast('Comment may not have saved — check your connection.');
+    });
+  }
+
+  function markSeen(postId) {
+    setLastSeen((prev) => {
+      const mine = { ...(prev[currentUser] || {}), [postId]: new Date().toISOString() };
+      const updated = { ...prev, [currentUser]: mine };
+      // Only ever writes the CURRENT user's own field — nobody else's "last seen"
+      // data can be clobbered by this.
+      boardApi('saveLastSeen', { user: currentUser, seenMap: mine }).catch((e) => console.error('Failed to save last-seen', e));
+      return updated;
+    });
+  }
+
+  function jumpTo(post) {
+    setActiveBoard(post.author);
+    setView(post.status === 'archived' ? 'archive' : 'active');
+    markSeen(post.id);
+  }
+
+  function boardUnread(boardOwner) {
+    return getUnreadItems(posts, lastSeen, currentUser).filter((it) => it.post.author === boardOwner).length;
+  }
+
+  function activeCount(boardOwner) {
+    return posts.filter((p) => p.author === boardOwner && p.status === 'active').length;
+  }
+
+  if (!currentUser) return <LoginScreen onSelect={setCurrentUser} />;
+
+  const isOwn = activeBoard === currentUser && USERS.includes(currentUser);
+  const visiblePosts = posts.filter((p) => p.author === activeBoard && p.status === view).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+  return (
+    <div className="min-h-screen bg-neutral-950 text-neutral-200 flex flex-col">
+      <header className="bg-neutral-900 border-b border-neutral-800 px-6 py-3.5 flex items-center justify-between sticky top-0 z-20">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center">
+            <span className="text-neutral-900 font-serif italic text-sm">CD</span>
+          </div>
+          <div>
+            <div className="text-sm font-medium text-neutral-100 leading-tight">The Content Desk</div>
+            <div className="text-xs text-neutral-600 leading-tight">Headlines &amp; social leads</div>
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <NotificationBell posts={posts} lastSeen={lastSeen} currentUser={currentUser} onJump={jumpTo} />
+          <div className="flex items-center gap-2 border border-neutral-800 rounded-full pl-1 pr-3 py-1">
+            <Avatar name={currentUser} size="w-6 h-6 text-xs" />
+            <span className="text-sm text-neutral-200">{currentUser}</span>
+            {currentUser === MANAGER && <span className="text-xs text-amber-400">manager</span>}
+          </div>
+          {currentUser === MANAGER && (
+            <button onClick={clearAllPosts} className="p-2 rounded-lg hover:bg-neutral-800 text-neutral-500 hover:text-rose-400" title="Clear all posts (testing)">
+              <Trash2 className="w-4 h-4" />
+            </button>
+          )}
+          <button onClick={() => setCurrentUser(null)} className="p-2 rounded-lg hover:bg-neutral-800 text-neutral-500" title="Switch user">
+            <LogOut className="w-4 h-4" />
+          </button>
+        </div>
+      </header>
+
+      <div className="flex flex-1">
+        <aside className="w-56 border-r border-neutral-800 bg-neutral-900 p-4 shrink-0">
+          {USERS.includes(currentUser) && (
+            <>
+              <div className="text-xs uppercase tracking-wider text-neutral-600 mb-2">My board</div>
+              <button onClick={() => setActiveBoard(currentUser)}
+                className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm mb-4 ${activeBoard === currentUser ? 'bg-neutral-800 text-amber-300 border-l-2 border-amber-400' : 'text-neutral-400 hover:bg-neutral-800'}`}>
+                <span className="flex items-center gap-2"><Avatar name={currentUser} size="w-5 h-5 text-xs" /> {currentUser}</span>
+                <span className="flex items-center gap-1.5">
+                  {activeCount(currentUser) > 0 && <span className="bg-neutral-700 text-neutral-300 text-xs rounded-full min-w-4 h-4 px-1 flex items-center justify-center" title="active posts">{activeCount(currentUser)}</span>}
+                  {boardUnread(currentUser) > 0 && <span className="bg-rose-600 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center" title="unread mentions/comments">{boardUnread(currentUser)}</span>}
+                </span>
+              </button>
+            </>
+          )}
+          <div className="text-xs uppercase tracking-wider text-neutral-600 mb-2">Team</div>
+          <div className="space-y-1">
+            {USERS.filter((u) => u !== currentUser).map((u) => (
+              <button key={u} onClick={() => setActiveBoard(u)}
+                className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm ${activeBoard === u ? 'bg-neutral-800 text-amber-300 border-l-2 border-amber-400' : 'text-neutral-400 hover:bg-neutral-800'}`}>
+                <span className="flex items-center gap-2"><Avatar name={u} size="w-5 h-5 text-xs" /> {u}</span>
+                <span className="flex items-center gap-1.5">
+                  {activeCount(u) > 0 && <span className="bg-neutral-700 text-neutral-300 text-xs rounded-full min-w-4 h-4 px-1 flex items-center justify-center" title="active posts">{activeCount(u)}</span>}
+                  {boardUnread(u) > 0 && <span className="bg-rose-600 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center" title="unread mentions/comments">{boardUnread(u)}</span>}
+                </span>
+              </button>
+            ))}
+          </div>
+        </aside>
+
+        <main className="flex-1 overflow-y-auto p-6">
+          <div className="flex items-center justify-between mb-5 max-w-6xl">
+            <div>
+              <h2 className="text-lg font-medium text-neutral-100">{isOwn ? 'My Board' : `${activeBoard}'s Board`}</h2>
+              {!isOwn && <p className="text-xs text-neutral-600 mt-0.5">Read-only — you can leave comments below each item</p>}
+            </div>
+            <div className="flex border border-neutral-800 rounded-lg overflow-hidden">
+              <button onClick={() => setView('active')} className={`px-4 py-1.5 text-sm ${view === 'active' ? 'bg-amber-200 text-neutral-900 font-medium' : 'text-neutral-500 hover:bg-neutral-800'}`}>Active</button>
+              <button onClick={() => setView('archived')} className={`px-4 py-1.5 text-sm ${view === 'archived' ? 'bg-amber-200 text-neutral-900 font-medium' : 'text-neutral-500 hover:bg-neutral-800'}`}>Archive</button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-6 max-w-6xl">
+            {[
+              { kind: 'post', title: 'Posts', accent: 'text-neutral-400' },
+              { kind: 'story', title: 'Stories', accent: 'text-neutral-400' },
+            ].map((col) => {
+              const colPosts = visiblePosts.filter((p) => (p.kind || 'post') === col.kind);
+              return (
+                <section key={col.kind} className="min-w-0">
+                  <div className={`text-sm font-medium mb-3 ${col.accent}`}>{col.title}</div>
+                  {isOwn && view === 'active' && <NewPostForm onCreate={createPost} kind={col.kind} />}
+                  {colPosts.length === 0 && (
+                    <div className="text-center py-12 text-neutral-700 border border-dashed border-neutral-800 rounded-xl">
+                      <p className="text-sm">{view === 'archived' ? 'Nothing archived.' : isOwn ? `No ${col.kind === 'story' ? 'stories' : 'posts'} yet.` : 'Nothing here yet.'}</p>
+                    </div>
+                  )}
+                  {colPosts.map((post) => (
+                    <PostCard
+                      key={post.id}
+                      post={post}
+                      currentUser={currentUser}
+                      canEdit={isOwn}
+                      onTogglePinHeadline={togglePinHeadline}
+                      onTogglePinLead={togglePinLead}
+                      onToggleSuggestions={toggleSuggestions}
+                      onRetry={retryPost}
+                      onEditField={editField}
+                      onAddSnippetImages={addSnippetImages}
+                      onRemoveSnippetImage={removeSnippetImage}
+                      onFormat={formatPost}
+                      onArchive={archivePost}
+                      onAddComment={addComment}
+                      onOpenComments={markSeen}
+                    />
+                  ))}
+                </section>
+              );
+            })}
+          </div>
+        </main>
+      </div>
+
+      {toast && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-neutral-800 border border-neutral-700 text-neutral-100 rounded-lg px-4 py-2.5 text-sm shadow-xl z-40">
+          {toast}
+        </div>
+      )}
+    </div>
+  );
+}
