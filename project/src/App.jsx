@@ -1035,7 +1035,7 @@ function StoryBody({ post, canEdit, copiedHl, onEditField, onTogglePinHeadline, 
                     <label className="text-xs border border-neutral-700 rounded-lg px-3 py-1.5 text-neutral-400 hover:border-amber-500 hover:text-amber-300 cursor-pointer inline-flex items-center gap-1.5">
                       <ImageIcon className="w-3.5 h-3.5" /> Browse
                       <input type="file" accept="image/*" multiple className="hidden"
-                        onChange={async (e) => { const files = e.target.files; e.target.value = ''; setUploadingSnippet(true); await onAddSnippetImages(post.id, files); setUploadingSnippet(false); }} />
+                        onChange={async (e) => { const files = Array.from(e.target.files || []); e.target.value = ''; setUploadingSnippet(true); await onAddSnippetImages(post.id, files); setUploadingSnippet(false); }} />
                     </label>
                   )}
                 </div>
@@ -1104,7 +1104,7 @@ function StoryBody({ post, canEdit, copiedHl, onEditField, onTogglePinHeadline, 
                         <div className="text-sm text-neutral-200 leading-relaxed">{renderStoryMarkup(v)}</div>
                       </div>
                       {canEdit && (
-                        <button onClick={() => onTogglePinHeadline(post.id, v)}
+                        <button onClick={(e) => { onTogglePinHeadline(post.id, v); e.currentTarget.blur(); }}
                           className={"shrink-0 text-xs rounded px-2 py-1 border " + (isPinned ? "border-amber-500 text-amber-300 bg-amber-500/10" : "border-neutral-700 text-neutral-400 hover:border-amber-500 hover:text-amber-300")}>
                           {isPinned ? "★ Pinned" : "☆ Pin"}
                         </button>
@@ -1338,7 +1338,7 @@ function PostCard({ post, currentUser, canEdit, onTogglePinHeadline, onTogglePin
                       <ImageIcon className="w-3.5 h-3.5" /> Browse
                       <input type="file" accept="image/*" multiple className="hidden"
                         onChange={async (e) => {
-                          const files = e.target.files;
+                          const files = Array.from(e.target.files || []);
                           e.target.value = '';
                           setUploadingSnippet(true);
                           await onAddSnippetImages(post.id, files);
@@ -1427,7 +1427,7 @@ function PostCard({ post, currentUser, canEdit, onTogglePinHeadline, onTogglePin
                         <div key={i} className="flex items-start justify-between gap-3 py-2 border-b border-neutral-900 last:border-b-0">
                           <span className="text-sm block text-neutral-200 leading-relaxed">{renderStoryMarkup(h)}</span>
                           {canEdit && (
-                            <button onClick={() => onTogglePinHeadline(post.id, h)}
+                            <button onClick={(e) => { onTogglePinHeadline(post.id, h); e.currentTarget.blur(); }}
                               className={"shrink-0 text-xs rounded px-2 py-1 border " + (hPinned ? "border-amber-500 text-amber-300 bg-amber-500/10" : "border-neutral-700 text-neutral-400 hover:border-amber-500 hover:text-amber-300")}>
                               {hPinned ? "★ Pinned" : "☆ Pin headline"}
                             </button>
@@ -1441,7 +1441,7 @@ function PostCard({ post, currentUser, canEdit, onTogglePinHeadline, onTogglePin
                         <div className="flex items-start justify-between gap-3">
                           <span className="text-xs block leading-relaxed text-amber-200/70">{stripStoryMarkup(lead)}</span>
                           {canEdit && (
-                            <button onClick={() => onTogglePinLead(post.id, lead)}
+                            <button onClick={(e) => { onTogglePinLead(post.id, lead); e.currentTarget.blur(); }}
                               className={"shrink-0 text-xs rounded px-2 py-1 border " + (lPinned ? "border-amber-500 text-amber-300 bg-amber-500/10" : "border-neutral-800 text-neutral-500 hover:border-amber-500 hover:text-amber-300")}>
                               {lPinned ? "★ Pinned" : "☆ Pin lead"}
                             </button>
