@@ -2,6 +2,16 @@
 // The client (src/App.jsx) posts { model, max_tokens, system, messages } here —
 // exactly the same shape it would send straight to api.anthropic.com/v1/messages.
 
+// IMPORTANT: without this, Vercel kills the function after its (short) default
+// timeout — way before Claude can finish a large generation (max_tokens: 6000 for
+// headlines can genuinely take 20-60+ seconds, more under load). That premature
+// kill is what was causing generations to fail/stall for everyone once real
+// concurrent traffic started. 60s is the max allowed on Hobby/Pro without Fluid
+// Compute; raise it further if your Vercel plan allows and it's still not enough.
+export const config = {
+  maxDuration: 60,
+};
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     res.status(405).json({ error: { message: 'Method not allowed' } });
