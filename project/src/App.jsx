@@ -1568,6 +1568,16 @@ export default function App() {
   const dirtyRef = useRef(new Set());
   const debounceRef = useRef({});
   const loadedRef = useRef(false);
+  // Track which posts THIS BROWSER TAB is actually, currently running a
+  // generation/format request for — separate from the post's own `generating`/
+  // `formatting` fields. This is the fix for the "gets stuck forever in another
+  // person's browser" bug: a tab that merely OBSERVED someone else's post as
+  // generating (via polling) must never treat that as its own in-flight work —
+  // only the tab that actually called runGeneration/formatPost for a given post
+  // should protect it from being overwritten on refresh, and only that tab's
+  // watchdog should ever be allowed to fail it.
+  const activeGenRef = useRef(new Set());
+  const activeFormatRef = useRef(new Set());
 
   const showToast = useCallback((msg) => { setToast(msg); setTimeout(() => setToast(''), 2400); }, []);
 
@@ -1579,9 +1589,11 @@ export default function App() {
         const remoteIds = new Set(remotePosts.map((rp) => rp.id));
         const merged = remotePosts.map((rp) => {
           const lp = local.find((p) => p.id === rp.id);
-          // Keep the local copy if it has unsaved edits, or is mid-generation/mid-format
-          // locally (the remote copy may be stale/placeholder).
-          if (lp && (dirtyRef.current.has(rp.id) || lp.generating || lp.leadsLoading || lp.formatting)) {
+          // Keep the local copy ONLY if it has unsaved edits, or THIS tab is the
+          // one actually running generation/formatting for it right now — never
+          // just because the post's data happens to say generating/formatting
+          // (that could be a snapshot from someone else's in-progress work).
+          if (lp && (dirtyRef.current.has(rp.id) || activeGenRef.current.has(rp.id) || activeFormatRef.current.has(rp.id))) {
             return lp;
           }
           return rp;
@@ -1613,6 +1625,14 @@ export default function App() {
   // whatever the cause (a code path that didn't throw, a browser tab that got
   // backgrounded and throttled, etc.) — force it into a clear failed state with
   // a Retry button rather than leaving the person staring at a frozen spinner.
+  //
+  // CRITICAL: this must only fire for a post THIS tab is actually, currently
+  // generating/formatting (tracked in activeGenRef/activeFormatRef) — never for
+  // a post that merely LOOKS like it's generating because that's the snapshot
+  // this tab happened to poll from someone else's in-progress work. Without this
+  // guard, an idle tab that once glimpsed someone else's "generating: true" post
+  // would sit there for 6 minutes and then overwrite that person's now-successful
+  // result with a fake failure.
   useEffect(() => {
     const WATCHDOG_MS = 6 * 60 * 1000; // 6 minutes — for full generation (headlines/story + leads)
     const FORMAT_WATCHDOG_MS = 4 * 60 * 1000; // 4 minutes — formatting is a single, smaller call
@@ -1621,11 +1641,11 @@ export default function App() {
       setPosts((prev) => {
         let changed = false;
         const next = prev.map((p) => {
-          if (p.generating && p.genStartedAt && (now - new Date(p.genStartedAt).getTime()) > WATCHDOG_MS) {
+          if (p.generating && activeGenRef.current.has(p.id) && p.genStartedAt && (now - new Date(p.genStartedAt).getTime()) > WATCHDOG_MS) {
             changed = true;
             return { ...p, generating: false, genStatus: null, genError: 'This took far longer than expected and may have stalled. Tap Retry to try again.' };
           }
-          if (p.formatting && p.formatStartedAt && (now - new Date(p.formatStartedAt).getTime()) > FORMAT_WATCHDOG_MS) {
+          if (p.formatting && activeFormatRef.current.has(p.id) && p.formatStartedAt && (now - new Date(p.formatStartedAt).getTime()) > FORMAT_WATCHDOG_MS) {
             changed = true;
             setTimeout(() => showToast('Formatting stalled longer than expected — try again.'), 0);
             return { ...p, formatting: false, formatStatus: null };
@@ -1835,6 +1855,7 @@ export default function App() {
   // the person an error — so under heavy simultaneous load (several people
   // generating at once) the person doesn't have to sit there tapping Retry.
   async function runGeneration(postId, form) {
+    activeGenRef.current.add(postId);
     setPosts((prev) => prev.map((p) => p.id === postId ? { ...p, genStartedAt: new Date().toISOString() } : p));
     try {
       await withAutoRetry(
@@ -1850,6 +1871,8 @@ export default function App() {
       );
     } catch (e) {
       persist((prev) => prev.map((p) => p.id === postId ? { ...p, generating: false, genStatus: null, genError: e.message } : p));
+    } finally {
+      activeGenRef.current.delete(postId);
     }
   }
 
@@ -1958,6 +1981,7 @@ export default function App() {
     if (!post) return;
     if (post.kind === 'story') {
       if (!post.draftHeadline) return;
+      activeFormatRef.current.add(postId);
       persist((prev) => prev.map((p) => p.id === postId ? { ...p, formatting: true, formatStatus: null, formatStartedAt: new Date().toISOString() } : p));
       try {
         const result = await withAutoRetry(
@@ -1977,10 +2001,13 @@ export default function App() {
       } catch (e) {
         persist((prev) => prev.map((p) => p.id === postId ? { ...p, formatting: false, formatStatus: null } : p));
         showToast('Formatting failed after 3 automatic attempts: ' + e.message);
+      } finally {
+        activeFormatRef.current.delete(postId);
       }
       return;
     }
     if (!post.draftHeadline || !post.draftLead) return;
+    activeFormatRef.current.add(postId);
     persist((prev) => prev.map((p) => p.id === postId ? { ...p, formatting: true, formatStatus: null, formatStartedAt: new Date().toISOString() } : p));
     try {
       const result = await withAutoRetry(
@@ -2000,6 +2027,8 @@ export default function App() {
     } catch (e) {
       persist((prev) => prev.map((p) => p.id === postId ? { ...p, formatting: false, formatStatus: null } : p));
       showToast('Formatting failed after 3 automatic attempts: ' + e.message);
+    } finally {
+      activeFormatRef.current.delete(postId);
     }
   }
 
