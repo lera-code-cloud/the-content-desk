@@ -1724,7 +1724,7 @@ export default function App() {
         const count = form.photoCount || '30+';
         msg += `\n\nPHOTO ARTICLE PARAMETERS:\n- Photo count: ${count}\n- Subtype: ${form.photoSubtype}\nEvery headline must end with "${count}" plus a fitting descriptor and PHOTOS/PICS.`;
       }
-      const rawAngles = await callClaude(prompt, msg, 6000, 30000, 'claude-sonnet-4-6', statusUpdater(postId, 'headlines'));
+      const rawAngles = await callClaude(prompt, msg, 6000, 55000, 'claude-sonnet-4-6', statusUpdater(postId, 'headlines'));
 
       // Real person names mentioned in the source material — used below as a
       // deterministic safety net to strip any highlight the model incorrectly put
@@ -1805,7 +1805,7 @@ export default function App() {
       let msg = `SOURCE MATERIAL (raw headline, pasted text, a URL, or a topic — you cannot open links, work only from the text below):\n\n${form.rawInput}`;
       if (form.intrigue) msg += `\n\n---\nCORE HOOK to build every version around:\n"${form.intrigue}"`;
       const [rawVersions, snippet] = await Promise.all([
-        callClaude(STORY_GEN_PROMPT, msg, 3500, 30000, 'claude-sonnet-4-6', statusUpdater(postId, 'story')),
+        callClaude(STORY_GEN_PROMPT, msg, 3500, 55000, 'claude-sonnet-4-6', statusUpdater(postId, 'story')),
         callClaude(STORY_SNIPPET_PROMPT, msg, 500, 30000, 'claude-haiku-4-5-20251001').then((r) => {
           const rec = r && r.recommendation;
           return typeof rec === 'string' ? rec : (rec ? JSON.stringify(rec) : '');
