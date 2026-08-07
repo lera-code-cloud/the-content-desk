@@ -1078,7 +1078,7 @@ function StoryBody({ post, canEdit, copiedHl, onEditField, onTogglePinHeadline, 
             {canEdit && post.status === 'active' && (
               <button onClick={() => onArchive(post.id)}
                 className="text-xs border border-emerald-700 rounded-lg px-3 py-1.5 text-emerald-400 hover:bg-emerald-700 hover:text-neutral-900 flex items-center gap-1.5">
-                <Check className="w-3.5 h-3.5" /> Mark complete &amp; archive
+                <Check className="w-3.5 h-3.5" /> Mark complete & remove
               </button>
             )}
           </div>
@@ -1396,7 +1396,7 @@ function PostCard({ post, currentUser, canEdit, onTogglePinHeadline, onTogglePin
           {canEdit && post.status === 'active' && (
             <button onClick={() => onArchive(post.id)}
               className="text-xs border border-emerald-700 rounded-lg px-3 py-1.5 text-emerald-400 hover:bg-emerald-700 hover:text-neutral-900 flex items-center gap-1.5">
-              <Check className="w-3.5 h-3.5" /> Mark complete &amp; archive
+              <Check className="w-3.5 h-3.5" /> Mark complete & remove
             </button>
           )}
         </div>
@@ -1563,7 +1563,6 @@ export default function App() {
   const [posts, setPosts] = useState([]);
   const [lastSeen, setLastSeen] = useState({});
   const [activeBoard, setActiveBoard] = useState(null);
-  const [view, setView] = useState('active');
   const [toast, setToast] = useState('');
   const dirtyRef = useRef(new Set());
   const debounceRef = useRef({});
@@ -2033,8 +2032,10 @@ export default function App() {
   }
 
   function archivePost(postId) {
-    persist((prev) => prev.map((p) => p.id === postId ? { ...p, status: 'archived', archivedAt: new Date().toISOString() } : p));
-    showToast('Archived ✓');
+    if (!window.confirm('Mark this done and remove it from the board? This cannot be undone.')) return;
+    setPosts((prev) => prev.filter((p) => p.id !== postId));
+    boardApi('deletePost', { postId }).catch((e) => console.error('Failed to delete post', e));
+    showToast('Removed from board ✓');
   }
 
   function addComment(postId, text) {
@@ -2067,7 +2068,6 @@ export default function App() {
 
   function jumpTo(post) {
     setActiveBoard(post.author);
-    setView(post.status === 'archived' ? 'archive' : 'active');
     markSeen(post.id);
   }
 
@@ -2082,7 +2082,7 @@ export default function App() {
   if (!currentUser) return <LoginScreen onSelect={setCurrentUser} />;
 
   const isOwn = activeBoard === currentUser && USERS.includes(currentUser);
-  const visiblePosts = posts.filter((p) => p.author === activeBoard && p.status === view).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  const visiblePosts = posts.filter((p) => p.author === activeBoard && p.status !== 'archived').sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-200 flex flex-col">
@@ -2150,10 +2150,6 @@ export default function App() {
               <h2 className="text-lg font-medium text-neutral-100">{isOwn ? 'My Board' : `${activeBoard}'s Board`}</h2>
               {!isOwn && <p className="text-xs text-neutral-600 mt-0.5">Read-only — you can leave comments below each item</p>}
             </div>
-            <div className="flex border border-neutral-800 rounded-lg overflow-hidden">
-              <button onClick={() => setView('active')} className={`px-4 py-1.5 text-sm ${view === 'active' ? 'bg-amber-200 text-neutral-900 font-medium' : 'text-neutral-500 hover:bg-neutral-800'}`}>Active</button>
-              <button onClick={() => setView('archived')} className={`px-4 py-1.5 text-sm ${view === 'archived' ? 'bg-amber-200 text-neutral-900 font-medium' : 'text-neutral-500 hover:bg-neutral-800'}`}>Archive</button>
-            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-6 max-w-6xl">
@@ -2165,10 +2161,10 @@ export default function App() {
               return (
                 <section key={col.kind} className="min-w-0">
                   <div className={`text-sm font-medium mb-3 ${col.accent}`}>{col.title}</div>
-                  {isOwn && view === 'active' && <NewPostForm onCreate={createPost} kind={col.kind} />}
+                  {isOwn && <NewPostForm onCreate={createPost} kind={col.kind} />}
                   {colPosts.length === 0 && (
                     <div className="text-center py-12 text-neutral-700 border border-dashed border-neutral-800 rounded-xl">
-                      <p className="text-sm">{view === 'archived' ? 'Nothing archived.' : isOwn ? `No ${col.kind === 'story' ? 'stories' : 'posts'} yet.` : 'Nothing here yet.'}</p>
+                      <p className="text-sm">{isOwn ? `No ${col.kind === 'story' ? 'stories' : 'posts'} yet.` : 'Nothing here yet.'}</p>
                     </div>
                   )}
                   {colPosts.map((post) => (
