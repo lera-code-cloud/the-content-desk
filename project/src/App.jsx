@@ -219,12 +219,13 @@ The post's whole job is to move readers into the COMMENTS, where the article lin
 ## FORMATTING (already apply it — do NOT return a plain draft)
 - Sentence case overall, with 1–3 of the MOST intriguing words in CAPS for punch (emphasize the intrigue, never a person's name). A few CAPS words for the whole lead is enough — never overdo it.
 - PLAIN TEXT ONLY: do NOT use any markup characters. Never output ** or ~~ or markdown of any kind in a lead. Emphasis in leads is done ONLY by writing words in CAPS.
-- EMOJI ARE MANDATORY: include 1–2 emoji that genuinely fit the emotion or the concrete content of THIS lead (e.g. 💔 grief, 😱 shock, 🕊️ loss/peace, ❤️ love, 👀 intrigue, ⚖️ justice, 🔥 controversy, 💪 resilience, 👑 fame). Choose per-lead — never the same emoji on every lead. Place them where they land naturally, not all clumped at the end.
+- EMOTIONAL EMOJI IS MANDATORY AND SEPARATE FROM THE CLOSING ARROW (see below): every lead needs at least 1 (up to 2) emoji picked for the emotion or concrete content of THIS lead (e.g. 💔 grief, 😱 shock, 🕊️ loss/peace, ❤️ love, 👀 intrigue, ⚖️ justice, 🔥 controversy, 💪 resilience, 👑 fame) placed somewhere IN THE BODY of the lead — mid-sentence, not at the very end and not adjacent to the closing pointer. Choose per-lead — never the same emoji on every lead.
+- SELF-CHECK: the trailing directional arrow from MANDATORY CLOSING below does NOT count as this emoji. If you count up the emoji in your draft and the ONLY one is the trailing arrow, you are missing the required body emoji — add one now, placed inside the body text, before you output the JSON.
 
 ${NO_CTA_RULE}
 
 ## MANDATORY CLOSING — point to the comments, WITHOUT commanding the user
-Every lead MUST end with a short, natural pointer to the comments, followed by a trailing arrow emoji (⬇️ / 🔽 / ⤵️) OR phrased as "...in the comments".
+Every lead MUST end with a short, natural pointer to the comments, followed by a trailing arrow emoji (⬇️ / 🔽 / ⤵️) OR phrased as "...in the comments". This is IN ADDITION TO the body emoji above, not a substitute for it — a lead with only this arrow and no other emoji is incomplete.
 - Instead of a command, state WHERE the information lives, as a fact: "Details ⬇️", "Full story below ⬇️", "Photos in the comments", "Her full statement is below ⤵️", "The rest is in the comments 🔽", "Everything we know is below ⬇️", "The full gallery is in the comments ⤵️".
 - VARY these constantly and creatively based on what the lead is about; do NOT reuse the same closer every time. They may repeat occasionally, but not often.
 
@@ -260,8 +261,8 @@ ${NO_CTA_RULE}
 1. Sentence case overall (proper nouns normal) — EXCEPT 1–3 of the most intriguing words in CAPS. Do not overdo it.
 2. Fix grammar and awkward/non-native phrasing only. Do not restructure or add new claims.
 3. EXCEPTION: same as the headline exception above — if the researcher's draft lead contains a banned call-to-action verb (see NO_CTA_RULE above), remove/rewrite just that word or phrase even though it goes beyond a pure grammar fix.
-4. EMOJI: ensure 1–2 emoji are present that logically fit the emotion/content, placed where they land naturally (not all clumped at the end). Trim if too many.
-5. The lead MUST end with a pointer to the comments + a trailing arrow (⬇️ / 🔽 / ⤵️) or "...in the comments" phrasing, stated as a fact — never a command.
+4. EMOJI: at least 1 emoji picked for the emotion/content must be present somewhere IN THE BODY of the lead (mid-sentence, not clumped at the end) — this is separate from and in addition to the closing arrow in rule 5. If the draft only has the closing arrow and no body emoji, ADD one that fits the emotion before returning. Trim if there are more than 2 body emoji.
+5. The lead MUST end with a pointer to the comments + a trailing arrow (⬇️ / 🔽 / ⤵️) or "...in the comments" phrasing, stated as a fact — never a command. This arrow does not count as the body emoji from rule 4.
 6. Keep a question ONLY if it's genuinely relevant; don't add one just to have one.
 
 ## ABSOLUTE RULE
@@ -1094,7 +1095,14 @@ function StoryBody({ post, canEdit, copiedHl, onEditField, onTogglePinHeadline, 
       {post.isFormatted && post.formattedCaption && (
         <div className="mb-4 bg-neutral-950 border border-amber-900 rounded-lg p-3">
           <div className="text-xs uppercase tracking-wider text-neutral-600 mb-1">Final story caption</div>
-          <p className="text-sm text-neutral-100 leading-relaxed">{renderStoryMarkup(post.formattedCaption)}</p>
+          {canEdit ? (
+            <AutoTextarea value={stripStoryMarkup(post.formattedCaption || '')} minHeight={52}
+              onChange={(e) => onEditField(post.id, 'formattedCaption', e.target.value)}
+              className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-2 py-1.5 text-sm text-neutral-100 leading-relaxed outline-none focus:border-amber-500" />
+          ) : (
+            <p className="text-sm text-neutral-100 leading-relaxed">{renderStoryMarkup(post.formattedCaption)}</p>
+          )}
+          {canEdit && <p className="text-xs text-neutral-600 mt-1.5">Edited something above? Tap <span className="text-amber-300">Format for publish</span> again to re-clean it up.</p>}
           <div className="flex gap-2 mt-2">
             <button onClick={onCopyCaption}
               className="text-xs border border-neutral-700 rounded px-2.5 py-1 text-neutral-400 hover:border-amber-500 hover:text-amber-300 flex items-center gap-1.5">
@@ -1413,7 +1421,13 @@ function PostCard({ post, currentUser, canEdit, onTogglePinHeadline, onTogglePin
         <div className="space-y-2 pt-1 mb-4">
           <div className="bg-neutral-950 border border-amber-900 rounded-lg p-3">
             <div className="text-xs uppercase tracking-wider text-neutral-600 mb-1">Final headline</div>
-            <p className="text-sm text-neutral-100 leading-relaxed">{renderStoryMarkup(post.formattedHeadline)}</p>
+            {canEdit ? (
+              <AutoTextarea value={stripStoryMarkup(post.formattedHeadline || '')} minHeight={44}
+                onChange={(e) => onEditField(post.id, 'formattedHeadline', e.target.value)}
+                className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-2 py-1.5 text-sm text-neutral-100 leading-relaxed outline-none focus:border-amber-500" />
+            ) : (
+              <p className="text-sm text-neutral-100 leading-relaxed">{renderStoryMarkup(post.formattedHeadline)}</p>
+            )}
             <button onClick={() => copy('hl')}
               className="mt-2 text-xs border border-neutral-700 rounded px-2.5 py-1 text-neutral-400 hover:border-amber-500 hover:text-amber-300 flex items-center gap-1.5">
               {copiedHl ? <><Check className="w-3.5 h-3.5" /> Copied</> : <><Copy className="w-3.5 h-3.5" /> Copy headline</>}
@@ -1421,12 +1435,21 @@ function PostCard({ post, currentUser, canEdit, onTogglePinHeadline, onTogglePin
           </div>
           <div className="bg-neutral-950 border border-neutral-700 rounded-lg p-3">
             <div className="text-xs uppercase tracking-wider text-neutral-600 mb-1">Final social lead</div>
-            <p className="text-sm text-neutral-200 leading-relaxed whitespace-pre-wrap">{stripStoryMarkup(post.formattedLead)}</p>
+            {canEdit ? (
+              <AutoTextarea value={stripStoryMarkup(post.formattedLead || '')} minHeight={60}
+                onChange={(e) => onEditField(post.id, 'formattedLead', e.target.value)}
+                className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-2 py-1.5 text-sm text-neutral-200 leading-relaxed outline-none focus:border-amber-500" />
+            ) : (
+              <p className="text-sm text-neutral-200 leading-relaxed whitespace-pre-wrap">{stripStoryMarkup(post.formattedLead)}</p>
+            )}
             <button onClick={() => copy('lead')}
               className="mt-2 text-xs border border-neutral-700 rounded px-2.5 py-1 text-neutral-400 hover:border-amber-500 hover:text-amber-300 flex items-center gap-1.5">
               {copiedLead ? <><Check className="w-3.5 h-3.5" /> Copied</> : <><Copy className="w-3.5 h-3.5" /> Copy lead</>}
             </button>
           </div>
+          {canEdit && (
+            <p className="text-xs text-neutral-600">Edited something above? Tap <span className="text-amber-300">Format for publish</span> again to re-clean it up.</p>
+          )}
           {canEdit && post.status === 'active' && (
             <button onClick={() => onArchive(post.id)}
               className="text-xs border border-emerald-700 rounded-lg px-3 py-1.5 text-emerald-400 hover:bg-emerald-700 hover:text-neutral-900 flex items-center gap-1.5">
@@ -2015,11 +2038,12 @@ export default function App() {
     if (!post) return;
     if (post.kind === 'story') {
       if (!post.draftHeadline) return;
+      const storySource = post.isFormatted && post.formattedCaption ? stripStoryMarkup(post.formattedCaption) : post.draftHeadline;
       activeFormatRef.current.add(postId);
       persist((prev) => prev.map((p) => p.id === postId ? { ...p, formatting: true, formatStatus: null, formatStartedAt: new Date().toISOString() } : p));
       try {
         const result = await withAutoRetry(
-          () => callClaude(STORY_FORMAT_PROMPT, `Story caption:\n"${post.draftHeadline}"`, 500, 30000, 'claude-sonnet-4-6', formatStatusUpdater(postId)),
+          () => callClaude(STORY_FORMAT_PROMPT, `Story caption:\n"${storySource}"`, 500, 30000, 'claude-sonnet-4-6', formatStatusUpdater(postId)),
           {
             maxRetries: 2,
             delays: [5000, 12000],
@@ -2041,11 +2065,13 @@ export default function App() {
       return;
     }
     if (!post.draftHeadline || !post.draftLead) return;
+    const headlineSource = post.isFormatted && post.formattedHeadline ? stripStoryMarkup(post.formattedHeadline) : post.draftHeadline;
+    const leadSource = post.isFormatted && post.formattedLead ? stripStoryMarkup(post.formattedLead) : post.draftLead;
     activeFormatRef.current.add(postId);
     persist((prev) => prev.map((p) => p.id === postId ? { ...p, formatting: true, formatStatus: null, formatStartedAt: new Date().toISOString() } : p));
     try {
       const result = await withAutoRetry(
-        () => callClaude(FORMAT_PROMPT, `Headline: "${post.draftHeadline}"\nLead: "${post.draftLead}"`, 700, 30000, 'claude-sonnet-4-6', formatStatusUpdater(postId)),
+        () => callClaude(FORMAT_PROMPT, `Headline: "${headlineSource}"\nLead: "${leadSource}"`, 700, 30000, 'claude-sonnet-4-6', formatStatusUpdater(postId)),
         {
           maxRetries: 2,
           delays: [5000, 12000],
