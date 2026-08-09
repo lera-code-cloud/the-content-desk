@@ -725,8 +725,13 @@ function ModeBadge({ mode }) {
 // Textarea that auto-grows to fit its content so the whole text is always visible.
 // While the user is actively typing (focused), it holds its own local value so a
 // background refresh can't momentarily overwrite what's being typed.
-function AutoTextarea({ value, minHeight = 40, className = '', onChange, ...props }) {
-  const ref = useRef(null);
+const AutoTextarea = React.forwardRef(function AutoTextarea({ value, minHeight = 40, className = '', onChange, ...props }, forwardedRef) {
+  const innerRef = useRef(null);
+  const setRefs = (node) => {
+    innerRef.current = node;
+    if (typeof forwardedRef === 'function') forwardedRef(node);
+    else if (forwardedRef) forwardedRef.current = node;
+  };
   const [focused, setFocused] = useState(false);
   const [local, setLocal] = useState(value || '');
 
@@ -734,7 +739,7 @@ function AutoTextarea({ value, minHeight = 40, className = '', onChange, ...prop
   useEffect(() => { if (!focused) setLocal(value || ''); }, [value, focused]);
 
   const resize = () => {
-    const el = ref.current;
+    const el = innerRef.current;
     if (!el) return;
     el.style.height = 'auto';
     el.style.height = Math.max(minHeight, el.scrollHeight) + 'px';
@@ -747,7 +752,7 @@ function AutoTextarea({ value, minHeight = 40, className = '', onChange, ...prop
 
   return (
     <textarea
-      ref={ref}
+      ref={setRefs}
       value={focused ? local : (value || '')}
       rows={1}
       onFocus={() => setFocused(true)}
@@ -759,7 +764,7 @@ function AutoTextarea({ value, minHeight = 40, className = '', onChange, ...prop
       {...props}
     />
   );
-}
+});
 
 /* ============================== LOGIN ============================== */
 
@@ -924,16 +929,20 @@ function CommentBox({ onSubmit }) {
           ))}
         </div>
       )}
-      <div className="flex gap-2">
-        <input
+      <div className="flex gap-2 items-end">
+        <AutoTextarea
           ref={ref}
           value={draft}
+          minHeight={40}
           onChange={handleChange}
-          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submit(); } }}
-          placeholder="Write a comment or @mention someone…"
+          onKeyDown={(e) => {
+            // Plain Enter = send. Shift+Enter = new line (let the textarea handle it normally).
+            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); }
+          }}
+          placeholder="Write a comment or @mention someone… (Shift+Enter for a new line)"
           className="flex-1 bg-neutral-950 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-100 placeholder-neutral-600 outline-none focus:border-amber-500"
         />
-        <button onClick={submit} className="px-3 py-2 bg-amber-200 text-neutral-900 rounded-lg hover:bg-amber-100">
+        <button onClick={submit} className="px-3 py-2 bg-amber-200 text-neutral-900 rounded-lg hover:bg-amber-100 shrink-0">
           <Send className="w-4 h-4" />
         </button>
       </div>
@@ -941,9 +950,14 @@ function CommentBox({ onSubmit }) {
   );
 }
 
-function CommentThread({ post, currentUser, onAddComment, onOpen }) {
+function CommentThread({ post, currentUser, onAddComment, onOpen, forceOpen }) {
   const [open, setOpen] = useState(false);
   const comments = post.comments || [];
+
+  useEffect(() => {
+    if (forceOpen) { setOpen(true); onOpen(post.id); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [forceOpen]);
 
   function toggle() {
     const next = !open;
@@ -1127,7 +1141,7 @@ function StoryBody({ post, canEdit, copiedHl, onEditField, onTogglePinHeadline, 
   );
 }
 
-function PostCard({ post, currentUser, canEdit, onTogglePinHeadline, onTogglePinLead, onToggleSuggestions, onEditField, onAddSnippetImages, onRemoveSnippetImage, onFormat, onArchive, onRetry, onAddComment, onOpenComments }) {
+function PostCard({ post, currentUser, canEdit, onTogglePinHeadline, onTogglePinLead, onToggleSuggestions, onEditField, onAddSnippetImages, onRemoveSnippetImage, onFormat, onArchive, onRetry, onAddComment, onOpenComments, jumpToPostId, onJumpHandled }) {
   const [showOriginal, setShowOriginal] = useState(false);
   const [copiedHl, setCopiedHl] = useState(false);
   const [lightbox, setLightbox] = useState(null);
@@ -1135,6 +1149,15 @@ function PostCard({ post, currentUser, canEdit, onTogglePinHeadline, onTogglePin
   const [dragOver, setDragOver] = useState(false);
   const [manualCopy, setManualCopy] = useState(null);
   const manualRef = useRef(null);
+  const cardRef = useRef(null);
+  const isJumpTarget = jumpToPostId === post.id;
+  useEffect(() => {
+    if (isJumpTarget) {
+      cardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      onJumpHandled && onJumpHandled();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isJumpTarget]);
   function selectManual() {
     const el = manualRef.current;
     if (!el) return;
@@ -1206,7 +1229,7 @@ function PostCard({ post, currentUser, canEdit, onTogglePinHeadline, onTogglePin
   }
 
   return (
-    <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-5 mb-4">
+    <div ref={cardRef} className="bg-neutral-900 border border-neutral-800 rounded-2xl p-5 mb-4">
       <div className="flex items-center justify-between mb-1">
         <div className="flex items-center gap-2">
           <Avatar name={post.author} />
@@ -1462,7 +1485,7 @@ function PostCard({ post, currentUser, canEdit, onTogglePinHeadline, onTogglePin
       )}
       </>)}
 
-      <CommentThread post={post} currentUser={currentUser} onAddComment={onAddComment} onOpen={onOpenComments} />
+      <CommentThread post={post} currentUser={currentUser} onAddComment={onAddComment} onOpen={onOpenComments} forceOpen={isJumpTarget} />
 
       {manualCopy !== null && (
         <div onClick={() => setManualCopy(null)}
@@ -1563,6 +1586,7 @@ export default function App() {
   const [posts, setPosts] = useState([]);
   const [lastSeen, setLastSeen] = useState({});
   const [activeBoard, setActiveBoard] = useState(null);
+  const [jumpToPostId, setJumpToPostId] = useState(null);
   const [toast, setToast] = useState('');
   const dirtyRef = useRef(new Set());
   const debounceRef = useRef({});
@@ -2068,6 +2092,7 @@ export default function App() {
 
   function jumpTo(post) {
     setActiveBoard(post.author);
+    setJumpToPostId(post.id);
     markSeen(post.id);
   }
 
@@ -2184,6 +2209,8 @@ export default function App() {
                       onArchive={archivePost}
                       onAddComment={addComment}
                       onOpenComments={markSeen}
+                      jumpToPostId={jumpToPostId}
+                      onJumpHandled={() => setJumpToPostId(null)}
                     />
                   ))}
                 </section>
