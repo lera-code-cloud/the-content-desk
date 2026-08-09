@@ -906,9 +906,20 @@ function CommentBox({ onSubmit }) {
     if (m) { setShowMentions(true); setQuery(m[1].toLowerCase()); } else { setShowMentions(false); }
   }
   function pick(name) {
-    setDraft((d) => d.replace(/@([A-Za-z]*)$/, '@' + name + ' '));
+    const newValue = draft.replace(/@([A-Za-z]*)$/, '@' + name + ' ');
+    setDraft(newValue);
     setShowMentions(false);
-    ref.current?.focus();
+    const el = ref.current;
+    if (el) {
+      // The textarea buffers its own local value while focused (so background
+      // refreshes never clobber in-progress typing) — setDraft() alone won't
+      // reach it in that state. Write through the DOM directly, the same way
+      // React itself would, so the change is picked up immediately either way.
+      const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
+      setter.call(el, newValue);
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.focus();
+    }
   }
   function submit() {
     if (!draft.trim()) return;
@@ -923,7 +934,7 @@ function CommentBox({ onSubmit }) {
       {showMentions && suggestions.length > 0 && (
         <div className="absolute bottom-full mb-1 left-0 bg-neutral-800 border border-neutral-700 rounded-lg shadow-xl overflow-hidden z-20 w-40">
           {suggestions.map((n) => (
-            <button key={n} onClick={() => pick(n)} className="flex items-center gap-2 w-full text-left px-3 py-2 text-sm text-neutral-200 hover:bg-neutral-700">
+            <button key={n} onMouseDown={(e) => e.preventDefault()} onClick={() => pick(n)} className="flex items-center gap-2 w-full text-left px-3 py-2 text-sm text-neutral-200 hover:bg-neutral-700">
               <Avatar name={n} size="w-5 h-5 text-xs" /> {n}
             </button>
           ))}
