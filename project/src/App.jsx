@@ -830,7 +830,7 @@ function NewPostForm({ onCreate, kind = 'post' }) {
   }
 
   return (
-    <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-5 mb-4">
+    <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-3 md:p-5 mb-4">
       {!isStory && (
         <div className="flex gap-0 mb-4 border border-neutral-800 rounded-lg overflow-hidden w-fit">
           <button onClick={() => setMode('news')} className={`px-4 py-2 text-sm ${mode === 'news' ? 'bg-amber-200 text-neutral-900 font-medium' : 'text-neutral-500 hover:bg-neutral-800'}`}>News/Evergreen article</button>
@@ -1248,7 +1248,7 @@ function PostCard({ post, currentUser, canEdit, onTogglePinHeadline, onTogglePin
   }
 
   return (
-    <div ref={cardRef} className="bg-neutral-900 border border-neutral-800 rounded-2xl p-5 mb-4">
+    <div ref={cardRef} className="bg-neutral-900 border border-neutral-800 rounded-2xl p-3 md:p-5 mb-4">
       <div className="flex items-center justify-between mb-1">
         <div className="flex items-center gap-2">
           <Avatar name={post.author} />
@@ -2148,7 +2148,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-200 flex flex-col">
-      <header className="bg-neutral-900 border-b border-neutral-800 px-6 py-3.5 flex items-center justify-between sticky top-0 z-20">
+      <header className="bg-neutral-900 border-b border-neutral-800 px-3 md:px-6 py-3.5 flex items-center justify-between sticky top-0 z-20">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center">
             <span className="text-neutral-900 font-serif italic text-sm">CD</span>
@@ -2176,14 +2176,14 @@ export default function App() {
         </div>
       </header>
 
-      <div className="flex flex-1">
-        <aside className="w-56 border-r border-neutral-800 bg-neutral-900 p-4 shrink-0">
+      <div className="flex flex-1 flex-col md:flex-row">
+        <aside className="w-full md:w-56 border-b md:border-b-0 md:border-r border-neutral-800 bg-neutral-900 p-3 md:p-4 shrink-0">
           {USERS.includes(currentUser) && (
             <>
-              <div className="text-xs uppercase tracking-wider text-neutral-600 mb-2">My board</div>
+              <div className="hidden md:block text-xs uppercase tracking-wider text-neutral-600 mb-2">My board</div>
               <button onClick={() => setActiveBoard(currentUser)}
-                className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm mb-4 ${activeBoard === currentUser ? 'bg-neutral-800 text-amber-300 border-l-2 border-amber-400' : 'text-neutral-400 hover:bg-neutral-800'}`}>
-                <span className="flex items-center gap-2"><Avatar name={currentUser} size="w-5 h-5 text-xs" /> {currentUser}</span>
+                className={`shrink-0 md:w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-sm mb-0 md:mb-4 ${activeBoard === currentUser ? 'bg-neutral-800 text-amber-300 border-l-2 border-amber-400' : 'text-neutral-400 hover:bg-neutral-800'}`}>
+                <span className="flex items-center gap-2 whitespace-nowrap"><Avatar name={currentUser} size="w-5 h-5 text-xs" /> {currentUser}</span>
                 <span className="flex items-center gap-1.5">
                   {activeCount(currentUser) > 0 && <span className="bg-neutral-700 text-neutral-300 text-xs rounded-full min-w-4 h-4 px-1 flex items-center justify-center" title="active posts">{activeCount(currentUser)}</span>}
                   {boardUnread(currentUser) > 0 && <span className="bg-rose-600 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center" title="unread mentions/comments">{boardUnread(currentUser)}</span>}
@@ -2191,12 +2191,12 @@ export default function App() {
               </button>
             </>
           )}
-          <div className="text-xs uppercase tracking-wider text-neutral-600 mb-2">Team</div>
-          <div className="space-y-1">
+          <div className="hidden md:block text-xs uppercase tracking-wider text-neutral-600 mb-2">Team</div>
+          <div className="flex md:block gap-2 overflow-x-auto md:overflow-visible md:space-y-1 pb-1 md:pb-0 -mx-3 md:mx-0 px-3 md:px-0">
             {USERS.filter((u) => u !== currentUser).map((u) => (
               <button key={u} onClick={() => setActiveBoard(u)}
-                className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm ${activeBoard === u ? 'bg-neutral-800 text-amber-300 border-l-2 border-amber-400' : 'text-neutral-400 hover:bg-neutral-800'}`}>
-                <span className="flex items-center gap-2"><Avatar name={u} size="w-5 h-5 text-xs" /> {u}</span>
+                className={`shrink-0 md:w-full md:shrink flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-sm ${activeBoard === u ? 'bg-neutral-800 text-amber-300 border-l-2 border-amber-400' : 'text-neutral-400 hover:bg-neutral-800'}`}>
+                <span className="flex items-center gap-2 whitespace-nowrap"><Avatar name={u} size="w-5 h-5 text-xs" /> {u}</span>
                 <span className="flex items-center gap-1.5">
                   {activeCount(u) > 0 && <span className="bg-neutral-700 text-neutral-300 text-xs rounded-full min-w-4 h-4 px-1 flex items-center justify-center" title="active posts">{activeCount(u)}</span>}
                   {boardUnread(u) > 0 && <span className="bg-rose-600 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center" title="unread mentions/comments">{boardUnread(u)}</span>}
@@ -2206,7 +2206,7 @@ export default function App() {
           </div>
         </aside>
 
-        <main className="flex-1 overflow-y-auto p-6">
+        <main className="flex-1 overflow-y-auto p-3 md:p-6">
           <div className="flex items-center justify-between mb-5 max-w-6xl">
             <div>
               <h2 className="text-lg font-medium text-neutral-100">{isOwn ? 'My Board' : `${activeBoard}'s Board`}</h2>
@@ -2214,7 +2214,7 @@ export default function App() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-6 max-w-6xl">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-6xl">
             {[
               { kind: 'post', title: 'Posts', accent: 'text-neutral-400' },
               { kind: 'story', title: 'Stories', accent: 'text-neutral-400' },
