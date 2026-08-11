@@ -14,6 +14,12 @@
 // (Create a free Redis database at https://upstash.com — the REST URL/token
 // are shown on the database's dashboard page.)
 
+import { sendPushToUser } from '../lib/push.js';
+
+export const config = {
+  maxDuration: 30,
+};
+
 async function redis(command) {
   const url = process.env.UPSTASH_REDIS_REST_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
@@ -88,6 +94,22 @@ export default async function handler(req, res) {
       if (!post) { res.status(500).json({ error: 'Stored post is corrupted' }); return; }
       post.comments = [...(post.comments || []), comment];
       await redis(['HSET', 'board:posts', postId, JSON.stringify(post)]);
+
+      // Notify: the post's author (if someone else commented on it) and anyone
+      // explicitly @mentioned — but never the person who just wrote the comment.
+      const recipients = new Set();
+      if (post.author && post.author !== comment.author) recipients.add(post.author);
+      (comment.mentions || []).forEach((m) => { if (m !== comment.author) recipients.add(m); });
+      const isMentionOf = (name) => (comment.mentions || []).includes(name);
+      await Promise.all(Array.from(recipients).map((name) => {
+        const title = isMentionOf(name) ? `${comment.author} mentioned you` : `${comment.author} commented on your post`;
+        return sendPushToUser(name, {
+          title,
+          body: comment.text.slice(0, 140),
+          tag: 'content-desk-comment',
+        }).catch((e) => console.error('push failed for', name, e.message));
+      }));
+
       res.status(200).json({ post });
       return;
     }

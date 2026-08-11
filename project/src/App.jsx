@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Bell, MessageCircle, Copy, Check, ChevronDown, ChevronUp, Sparkles, LogOut, Send, RotateCcw, Archive as ArchiveIcon, Wand2, Image as ImageIcon, X as XIcon, Trash2 } from 'lucide-react';
+import { Bell, BellRing, BellOff, MessageCircle, Copy, Check, ChevronDown, ChevronUp, Sparkles, LogOut, Send, RotateCcw, Archive as ArchiveIcon, Wand2, Image as ImageIcon, X as XIcon, Trash2 } from 'lucide-react';
 
 /* ============================== CONSTANTS ============================== */
 
@@ -693,6 +693,40 @@ async function boardApi(action, payload) {
     throw new Error(msg);
   }
   return res.json();
+}
+
+/* ============================== PUSH NOTIFICATIONS ============================== */
+
+async function pushApi(action, payload) {
+  const res = await fetch('/api/push', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action, ...payload }),
+  });
+  if (!res.ok) {
+    let msg = `Push API error (${res.status})`;
+    try { const j = await res.json(); if (j?.error) msg = j.error; } catch (e) { /* ignore */ }
+    throw new Error(msg);
+  }
+  return res.json();
+}
+
+// Web Push wants the VAPID public key as a Uint8Array, not the base64url
+// string the server hands back — this is the standard conversion.
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; ++i) outputArray[i] = rawData.charCodeAt(i);
+  return outputArray;
+}
+
+function isIOSDevice() {
+  return /iP(hone|ad|od)/.test(navigator.userAgent);
+}
+function isStandaloneDisplay() {
+  return window.navigator.standalone === true || window.matchMedia('(display-mode: standalone)').matches;
 }
 
 /* ============================== SMALL UI PIECES ============================== */
@@ -1635,6 +1669,8 @@ export default function App() {
   // watchdog should ever be allowed to fail it.
   const activeGenRef = useRef(new Set());
   const activeFormatRef = useRef(new Set());
+  // 'unsupported' | 'ios-needs-install' | 'default' | 'granted' | 'denied'
+  const [pushStatus, setPushStatus] = useState('unsupported');
 
   const showToast = useCallback((msg) => { setToast(msg); setTimeout(() => setToast(''), 2400); }, []);
 
@@ -1675,6 +1711,42 @@ export default function App() {
     const interval = setInterval(refresh, 4000);
     return () => clearInterval(interval);
   }, [currentUser, refresh]);
+
+  useEffect(() => {
+    if (!currentUser) return;
+    if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
+      setPushStatus('unsupported');
+      return;
+    }
+    navigator.serviceWorker.register('/sw.js').catch((e) => console.error('SW registration failed', e));
+    if (isIOSDevice() && !isStandaloneDisplay()) {
+      setPushStatus('ios-needs-install');
+      return;
+    }
+    setPushStatus(Notification.permission); // 'default' | 'granted' | 'denied'
+  }, [currentUser]);
+
+  async function enableNotifications() {
+    try {
+      const reg = await navigator.serviceWorker.register('/sw.js');
+      const permission = await Notification.requestPermission();
+      setPushStatus(permission);
+      if (permission !== 'granted') return;
+      const { key } = await pushApi('getVapidKey', {});
+      let sub = await reg.pushManager.getSubscription();
+      if (!sub) {
+        sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(key),
+        });
+      }
+      await pushApi('subscribe', { user: currentUser, subscription: sub.toJSON() });
+      showToast('Notifications enabled ✓');
+    } catch (e) {
+      console.error('enableNotifications failed', e);
+      showToast('Could not enable notifications: ' + e.message);
+    }
+  }
 
   // Safety net: our own retry logic (3 attempts, generous per-call waits) should
   // never take longer than ~4 minutes to either finish or fail with a visible
@@ -2159,6 +2231,23 @@ export default function App() {
           </div>
         </div>
         <div className="flex items-center gap-3">
+          {pushStatus === 'default' && (
+            <button onClick={enableNotifications}
+              className="flex items-center gap-1.5 text-xs border border-amber-700 rounded-lg px-2.5 py-1.5 text-amber-300 hover:bg-amber-700 hover:text-neutral-900" title="Enable push notifications on this device">
+              <BellRing className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Enable notifications</span>
+            </button>
+          )}
+          {pushStatus === 'ios-needs-install' && (
+            <button onClick={() => showToast('On iPhone: tap the Share icon in Safari → "Add to Home Screen" → open the app from your Home Screen, then try again.')}
+              className="flex items-center gap-1.5 text-xs border border-neutral-700 rounded-lg px-2.5 py-1.5 text-neutral-400 hover:border-amber-500 hover:text-amber-300" title="Add to Home Screen to enable notifications on iPhone">
+              <BellOff className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Add to Home Screen for notifications</span>
+            </button>
+          )}
+          {pushStatus === 'denied' && (
+            <span className="flex items-center gap-1.5 text-xs text-neutral-600" title="Notifications are blocked in your browser settings">
+              <BellOff className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Notifications blocked</span>
+            </span>
+          )}
           <NotificationBell posts={posts} lastSeen={lastSeen} currentUser={currentUser} onJump={jumpTo} />
           <div className="flex items-center gap-2 border border-neutral-800 rounded-full pl-1 pr-3 py-1">
             <Avatar name={currentUser} size="w-6 h-6 text-xs" />
