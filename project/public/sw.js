@@ -15,12 +15,13 @@ self.addEventListener('push', (event) => {
   try { data = event.data ? event.data.json() : {}; } catch (e) { data = { title: 'The Content Desk', body: event.data ? event.data.text() : '' }; }
 
   const title = data.title || 'The Content Desk';
+  const postId = data.postId || null;
   const options = {
     body: data.body || '',
     icon: '/icon-192.png',
     badge: '/icon-192.png',
     tag: data.tag || 'content-desk',
-    data: { url: '/' },
+    data: { postId, url: postId ? `/?postId=${encodeURIComponent(postId)}` : '/' },
     // Sound itself is played by the OS/browser using its own default
     // notification sound — the Web Push API has no way to set a custom sound
     // file. `silent: false` just makes sure we never accidentally suppress
@@ -34,15 +35,21 @@ self.addEventListener('push', (event) => {
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
+  const postId = event.notification.data && event.notification.data.postId;
   const targetUrl = (event.notification.data && event.notification.data.url) || '/';
 
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
       for (const client of clientList) {
         if (client.url.includes(self.location.origin) && 'focus' in client) {
+          // The app is already open — tell it which post to jump to instead of
+          // just focusing the tab and leaving it wherever it was.
+          client.postMessage({ type: 'jump-to-post', postId });
           return client.focus();
         }
       }
+      // No tab open at all — open a fresh one with the post id in the URL, the
+      // app reads that on load and jumps there once the board has loaded.
       if (self.clients.openWindow) return self.clients.openWindow(targetUrl);
     })
   );

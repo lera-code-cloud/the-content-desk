@@ -6,6 +6,7 @@ import { Bell, BellRing, BellOff, MessageCircle, Copy, Check, ChevronDown, Chevr
 const USERS = ['Darin', 'Alyona', 'Nastya', 'Vika', 'Nazar', 'Tania'];
 const MANAGER = 'Lera';
 const ALL_USERS = [...USERS, MANAGER];
+const REACTION_EMOJIS = ['👍', '👎', '🤍', '🖤', '🫡'];
 
 const AVATAR_COLORS = {
   Darin: '#7C93B3',   // pastel blue
@@ -56,8 +57,45 @@ Never invent an age that isn't in the input. If no age is given, don't fabricate
 // this rule must NEVER be pasted into the story prompts.
 const NO_CTA_RULE = `## ABSOLUTE RULE — NO CALL-TO-ACTION VERBS AIMED AT THE READER (posts only)
 This is a hard rule, not a style preference. NEVER use a verb that commands or invites the reader to take an action, anywhere in the headline or the lead — including disguised/soft imperatives. BANNED verbs/phrases (non-exhaustive — the pattern is banned, not just these exact words): "see", "watch", "read", "click", "check", "look", "find out", "discover", "learn more", "swipe", "tap", "explore", "keep reading", "see why", "watch what happened", "see the photos", "find out how", "comment", "tag a friend", "share if".
-The curiosity gap plus a plain factual pointer ("Details below", "The full story is in the comments") already does the job of pulling the reader in — a command is redundant AND against the rules.
+The curiosity gap plus a plain factual closer (see LEAD_CLOSING_BANK below) already does the job of pulling the reader in — a command is redundant AND against the rules.
 SELF-CHECK before returning output: re-read every headline and every lead one banned-verb-family at a time. If ANY of those verbs appears anywhere — including inside a photo-count phrase like "SEE 30+ PHOTOS" — rewrite that phrase to remove the verb while keeping the same information (e.g. "SEE 30+ RARE PHOTOS" → "30+ RARE PHOTOS"). Do this for headlines AND leads before you output the JSON.`;
+
+// The ONLY emoji allowed for emotional/thematic use in leads and stories. Pick
+// whichever one actually matches the emotion and subject of THIS specific
+// piece of text — never pick randomly or reuse the same one everywhere.
+const EMOTION_EMOJI_LIST = `😀 😃 😄 😁 😆 😅 😂 🤣 🥲 😊 😇 🙂 🙃 😉 😌 😍 🥰 😘 😗 😙 😚 😋 😛 😝 😜 🤪 🤨 🧐 🤓 😎 🥸 🤩 🥳 😏 😒 😞 😔 😟 😕 🙁 ☹️ 😣 😖 😫 😩 🥺 😢 😭 😤 😠 😡 🤬 🤯 😳 🥵 🥶 😱 😨 😰 😥 😓 🤗 🤔 🫣 🤭 🫢 🤫 🤥 😶 😐 😑 😬 🙄 😯 😦 😧 😮 😲 🥱 😴 🤤 😪 😵 😵‍💫 🤐 🥴 🤢 🤮 🤧 😷 🤒 🤕 🤑 🤠 🫠 🫡 🫤 🥹 🫨 💔 ❤️‍🔥 🔥 💥 🚨 ❗️ ‼️ ⚠️ 😈 👿 😹 👽 🎃 🙈 🙉 🙊 🫶 💕 💞 💖 💗 ✨ ⚡️ 🎉 😘 😻 💋 👶 🏠 💍 💐 💑 👫 👩‍❤️‍👨 👩‍❤️‍👩 👨‍❤️‍👨 🧑‍❤️‍🧑 💏 👩‍❤️‍💋‍👨 👩‍❤️‍💋‍👩 👨‍❤️‍💋‍👨 🧑‍❤️‍💋‍🧑`;
+
+// Directional/arrow emoji — used ONLY for the Story CTA line (pointing the
+// viewer to swipe/tap for more). These are BANNED in posts (headlines and
+// leads) — posts point to the comments using an EMOTION_EMOJI_LIST emoji
+// instead, never an arrow.
+const ARROW_EMOJI_LIST = `➡️ ⬅️ ⬆️ ⬇️ ↗️ ↘️ ↙️ ↖️ ↔️ ↕️ 🔄 🔃 ↩️ ↪️ ⤴️ ⤵️ 🔙 🔚 🔛 🔜 🔝 ➜ ➝ ➞ ➟ ➠ ➢ ➤ ▶️ ◀️ 🔼 🔽 ⏩ ⏪ ⏫ ⏬ 👆 👇 👉 👈 ☝️ 🫵`;
+
+// Posts (headlines and leads) must NEVER contain a directional/arrow emoji —
+// that's reserved for Stories only. Reused wherever this needs stating.
+const NO_ARROW_EMOJI_IN_POSTS_RULE = `## ABSOLUTE RULE — NO ARROW/DIRECTIONAL EMOJI IN POSTS
+Posts (headlines and leads) must NEVER use a directional/arrow emoji anywhere — banned set: ${ARROW_EMOJI_LIST}
+This includes the closing pointer to the comments: it ends with an EMOTION_EMOJI_LIST emoji that matches the lead's feeling, never an arrow. Arrows are reserved for Stories only.`;
+
+// The bank of allowed closing sentences for a lead — replaces "in the
+// comments" / "below" / "in the comments below" entirely, which are now
+// BANNED. Grouped by what the post's actual payoff/intrigue is, so the right
+// category can be picked instead of a generic one. Phrases may be lightly
+// adapted (e.g. "The images speak volumes" → "The details speak volumes" if
+// the payoff isn't really images) as long as the structure/meaning holds.
+const LEAD_CLOSING_BANK = `LEAD_CLOSING_BANK — pick ONE sentence from the category matching this lead's actual payoff, then rotate constantly (never repeat the same one across the angles for one post):
+
+DETAILS / NEW INFORMATION (the payoff is a fact, quote, or update — not a photo or video):
+Here's what we know so far. · This is what we know so far. · More details have emerged. · New details have come to light. · The latest details have now emerged. · There's more to the story. · The story is still unfolding. · More information is coming to light. · But there's more to the story. · And that's not the whole story. · But that wasn't the end of it. · But one detail stands out. · One detail, however, changes the picture. · What followed was unexpected. · The situation soon took another turn. · Now, there's a new update. · Since then, things have changed. · Now, new information has emerged. · The situation has since developed. · There's now more to the story. · A new development has changed the picture. · New details are now coming to light. · It's a moment few expected. · The news has left many stunned. · It's a development no one saw coming. · The full picture is starting to emerge. · There's now a clearer picture of what happened. · What emerged paints a different picture. · A closer look reveals even more. · One detail is particularly hard to miss. · What emerged tells a story of its own. · The details speak volumes.
+
+PHOTOS (the payoff is a photo/photos):
+The photos tell the rest of the story. · The photos speak for themselves. · The pictures say it all. · The images reveal even more. · The photos capture it all. · One photo says more than words could. · The images offer a closer look. · The photos reveal a different side of the story. · The moment was captured in photos. · And there are photos to prove it. · The pictures leave little to the imagination. · The photos have since surfaced. · New photos have now emerged. · The images quickly caught attention. · One particular photo stands out. · The photos offer a glimpse into what happened. · The photos capture a telling moment. · The pictures reveal more than expected. · The images paint a clearer picture. · The photos add another piece to the story. · The pictures show just how much has changed. · The images shed new light on the story. · The photos captured every detail. · The pictures give a rare glimpse of the moment. · The photos show a side rarely seen. · The images reveal a lot without saying a word. · The pictures tell a story of their own. · The photos put everything into perspective. · The images captured a moment worth remembering. · A series of photos captured the moment. · The latest photos have drawn attention. · A newly surfaced photo adds another detail. · The photos have become part of the story. · One image has everyone talking. · One snapshot tells quite a story. · The photos say it all. · The images tell the story. · One image says it all. · The images reveal more. · The pictures tell the rest. · The images speak volumes.
+
+VIDEO / FOOTAGE (the payoff is video/footage):
+The moment was caught on camera. · The whole thing was captured on video. · The footage tells the story. · The video speaks for itself. · The footage reveals what happened next. · The moment was captured on film. · There's footage of the moment. · The footage has since surfaced. · The video shows a different side of the story. · One moment on camera stands out. · The footage quickly caught attention. · And the cameras were rolling. · What happened was caught on camera. · The camera captured every second. · The footage captures the moment as it happened. · The video offers a closer glimpse. · The footage adds another layer to the story. · The camera caught what happened next. · The moment unfolded on camera. · The footage captures an unexpected moment. · The video reveals more than words can describe. · The footage paints a clearer picture. · The cameras happened to capture it all. · The entire moment played out on camera. · The footage shows exactly how it unfolded. · A camera was there to capture the moment. · The video has since drawn plenty of attention. · The footage has people talking. · One moment in the video stands out. · The clip captures a moment few expected. · The footage offers a rare glimpse. · The camera didn't miss a thing. · What the camera captured tells its own story. · The footage says it all. · The camera caught it all. · It was caught on camera. · The camera tells the rest. · The footage reveals more.
+
+GENERAL / AMBIGUOUS (works when the payoff is just "a moment", a reaction, or unclear which of the above fits):
+The moment didn't go unnoticed. · It was all captured on camera. · The images tell their own story. · The cameras captured what words couldn't. · There's now a closer look at what happened. · The moment has since surfaced online. · What was captured has people talking. · The images have sparked plenty of reactions. · What emerged afterward added another layer to the story. · The visuals reveal more than expected. · The moment has now been captured for all to see. · There's more to this moment than meets the eye. · One moment in particular stands out. · The moment looks different from up close. · What surfaced afterward added to the story. · What was captured adds a whole new perspective. · The moment speaks for itself. · What happened was impossible to miss. · There's one moment that says it all. · The moment speaks volumes. · The images speak volumes.`;
 
 const NEWS_PROMPT = `## NO INTERNET ACCESS
 You cannot browse, fetch, or open URLs. If the input contains a URL, treat the words inside the URL itself (slug, filename, any visible topic words) plus any surrounding text as the ONLY information you have. NEVER say you can't access a link, never explain your limitations, never ask for more information — always produce the JSON output below using whatever text is given, even if it is minimal. This rule overrides every other instinct.
@@ -219,15 +257,21 @@ The post's whole job is to move readers into the COMMENTS, where the article lin
 ## FORMATTING (already apply it — do NOT return a plain draft)
 - Sentence case overall, with 1–3 of the MOST intriguing words in CAPS for punch (emphasize the intrigue, never a person's name). A few CAPS words for the whole lead is enough — never overdo it.
 - PLAIN TEXT ONLY: do NOT use any markup characters. Never output ** or ~~ or markdown of any kind in a lead. Emphasis in leads is done ONLY by writing words in CAPS.
-- EMOTIONAL EMOJI IS MANDATORY AND SEPARATE FROM THE CLOSING ARROW (see below): every lead needs at least 1 (up to 2) emoji picked for the emotion or concrete content of THIS lead (e.g. 💔 grief, 😱 shock, 🕊️ loss/peace, ❤️ love, 👀 intrigue, ⚖️ justice, 🔥 controversy, 💪 resilience, 👑 fame) placed somewhere IN THE BODY of the lead — mid-sentence, not at the very end and not adjacent to the closing pointer. Choose per-lead — never the same emoji on every lead.
-- SELF-CHECK: the trailing directional arrow from MANDATORY CLOSING below does NOT count as this emoji. If you count up the emoji in your draft and the ONLY one is the trailing arrow, you are missing the required body emoji — add one now, placed inside the body text, before you output the JSON.
+- EMOTIONAL EMOJI IS MANDATORY AND SEPARATE FROM THE CLOSING EMOJI (see below): every lead needs at least 1 (up to 2) emoji, chosen ONLY from this list — ${EMOTION_EMOJI_LIST} — picked because it genuinely matches the emotion AND subject of THIS lead, placed somewhere IN THE BODY of the lead — mid-sentence, not at the very end and not adjacent to the closing pointer. Choose per-lead — never the same emoji on every lead.
+- SELF-CHECK: the closing emoji from MANDATORY CLOSING below does NOT count as this body emoji. If you count up the emoji in your draft and the ONLY one is the closing one, you are missing the required body emoji — add one now, placed inside the body text, before you output the JSON.
 
 ${NO_CTA_RULE}
 
-## MANDATORY CLOSING — point to the comments, WITHOUT commanding the user
-Every lead MUST end with a short, natural pointer to the comments, followed by a trailing arrow emoji (⬇️ / 🔽 / ⤵️) OR phrased as "...in the comments". This is IN ADDITION TO the body emoji above, not a substitute for it — a lead with only this arrow and no other emoji is incomplete.
-- Instead of a command, state WHERE the information lives, as a fact: "Details ⬇️", "Full story below ⬇️", "Photos in the comments", "Her full statement is below ⤵️", "The rest is in the comments 🔽", "Everything we know is below ⬇️", "The full gallery is in the comments ⤵️".
-- VARY these constantly and creatively based on what the lead is about; do NOT reuse the same closer every time. They may repeat occasionally, but not often.
+${NO_ARROW_EMOJI_IN_POSTS_RULE}
+
+## MANDATORY CLOSING — pick ONE sentence from LEAD_CLOSING_BANK, never invent your own closer
+Every lead MUST end with exactly one sentence chosen from LEAD_CLOSING_BANK below, immediately followed by ONE emoji chosen from ${EMOTION_EMOJI_LIST} that matches the lead's feeling — NEVER an arrow (see the arrow ban above). This closing emoji is IN ADDITION TO the body emoji above, not a substitute for it — a lead with only this closing emoji and no other emoji is incomplete.
+- FIRST decide what this post's actual payoff is — new details/facts, photos, video/footage, or just "a moment" in general — and pick the matching category from the bank. Do not default to the DETAILS category just because it's listed first.
+- You may lightly adapt a bank sentence's wording to fit better (e.g. "The images speak volumes" → "The details speak volumes" if the payoff isn't really images) as long as the structure and meaning stay the same. Do not write a wholly new sentence that isn't based on the bank.
+- BANNED, no exceptions: "in the comments", "in the comments below", "below" used as a location pointer, "comment below", or any rephrasing of these — the bank sentences replace that function entirely; none of them should ever be edited to reintroduce this wording.
+- ALTERNATE constantly across the angles you're writing for this post: never reuse the same closer sentence twice, and don't lean on one category every time — mix categories when the content allows it.
+
+${LEAD_CLOSING_BANK}
 
 ## QUESTIONS
 - Only include a question if it's genuinely relevant and natural for that specific lead. Do NOT force a question into every lead — many strong leads have none.
@@ -238,7 +282,7 @@ ${QUOTE_RULE}
 Never invent quotes, numbers, or details not present in the matching headline (except quotes explicitly provided in the input, which you must reuse verbatim).
 
 ## FORBIDDEN PHRASES
-"no one saw this coming" · "you won't believe" · "absolutely shocking" · "jaw-dropping" · "this changes everything" · "the internet is losing it" · "we are speechless" · "comment below" · "tag a friend" · "click the link" · "share if" · "read more" · "see more" · "find out" · "watch"
+"no one saw this coming" · "you won't believe" · "absolutely shocking" · "jaw-dropping" · "this changes everything" · "the internet is losing it" · "we are speechless" · "comment below" · "in the comments" · "in the comments below" · "tag a friend" · "click the link" · "share if" · "read more" · "see more" · "find out" · "watch"
 
 ## INPUT & OUTPUT
 You receive a JSON object whose keys are angle names and whose values are arrays of that angle's headlines. Return a JSON object with the SAME keys, each value a SINGLE lead string for that angle.
@@ -249,6 +293,8 @@ const FORMAT_PROMPT = `## ROLE
 Copy editor finalizing one Facebook headline and one Social Lead for publishing, exactly as the researcher selected and edited them.
 
 ${NO_CTA_RULE}
+
+${NO_ARROW_EMOJI_IN_POSTS_RULE}
 
 ## HEADLINE RULES
 1. Write the entire headline in UPPER CASE.
@@ -261,9 +307,12 @@ ${NO_CTA_RULE}
 1. Sentence case overall (proper nouns normal) — EXCEPT 1–3 of the most intriguing words in CAPS. Do not overdo it.
 2. Fix grammar and awkward/non-native phrasing only. Do not restructure or add new claims.
 3. EXCEPTION: same as the headline exception above — if the researcher's draft lead contains a banned call-to-action verb (see NO_CTA_RULE above), remove/rewrite just that word or phrase even though it goes beyond a pure grammar fix.
-4. EMOJI: at least 1 emoji picked for the emotion/content must be present somewhere IN THE BODY of the lead (mid-sentence, not clumped at the end) — this is separate from and in addition to the closing arrow in rule 5. If the draft only has the closing arrow and no body emoji, ADD one that fits the emotion before returning. Trim if there are more than 2 body emoji.
-5. The lead MUST end with a pointer to the comments + a trailing arrow (⬇️ / 🔽 / ⤵️) or "...in the comments" phrasing, stated as a fact — never a command. This arrow does not count as the body emoji from rule 4.
-6. Keep a question ONLY if it's genuinely relevant; don't add one just to have one.
+4. EMOJI: at least 1 emoji, chosen ONLY from this list — ${EMOTION_EMOJI_LIST} — matching the emotion/content, must be present somewhere IN THE BODY of the lead (mid-sentence, not clumped at the end) — this is separate from and in addition to the closing emoji in rule 5. If the draft only has the closing emoji and no body emoji, ADD one that fits the emotion before returning. Trim if there are more than 2 body emoji. If the draft has an arrow emoji anywhere, remove it (see arrow ban above) and replace with a fitting emoji from the list if one is still needed there.
+5. The lead MUST end with exactly one sentence from LEAD_CLOSING_BANK below (pick the category matching whether the payoff is details, photos, video, or general — light adaptation of a bank sentence's wording is fine, inventing a new one is not), immediately followed by ONE emoji from ${EMOTION_EMOJI_LIST} matching the lead's feeling (never an arrow). This closing emoji does not count as the body emoji from rule 4.
+6. EXCEPTION to "don't restructure" (rule 2): if the researcher's draft still ends with "in the comments", "in the comments below", "below" as a location pointer, or "comment below" — this wording is banned, not a style choice. Replace it with a fitting LEAD_CLOSING_BANK sentence even though this goes beyond a pure grammar fix.
+7. Keep a question ONLY if it's genuinely relevant; don't add one just to have one.
+
+${LEAD_CLOSING_BANK}
 
 ## ABSOLUTE RULE
 Never invent facts. Only edit what is given, minimally (aside from the CTA-verb exceptions above).
@@ -307,8 +356,8 @@ Use DIFFERENT hook styles across the five: mystery, transformation, shocking rea
 
 ## EMOJI RULES (adaptive — do NOT use a fixed template)
 - Use exactly 2 emoji per version.
-- The CTA line (line 2) ALWAYS ends with a directional emoji (⬇️ / 👇 / ⤵️).
-- The OTHER emoji is an emotional/contextual one that fits THIS hook — but its PLACEMENT must vary creatively version to version: sometimes at the very start of the hook, sometimes mid-sentence right after the key word, sometimes at the end of the hook line. Do NOT always put it after the first sentence. Choose the placement that best punches up the hook.
+- The CTA line (line 2) ALWAYS ends with a directional emoji chosen from this list: ${ARROW_EMOJI_LIST}
+- The OTHER emoji is an emotional/contextual one, chosen ONLY from this list — ${EMOTION_EMOJI_LIST} — matching THIS hook's emotion and subject — but its PLACEMENT must vary creatively version to version: sometimes at the very start of the hook, sometimes mid-sentence right after the key word, sometimes at the end of the hook line. Do NOT always put it after the first sentence. Choose the placement that best punches up the hook.
 - Never reuse the same emotional emoji across all five versions; vary both the emoji and its position.
 - Never more than 2 emoji total; never both on the same line.
 
@@ -351,7 +400,7 @@ Copy editor finalizing ONE Facebook Story caption exactly as the researcher wrot
 3. Sentence case overall, with the most intriguing 2–3 words in ALL CAPS for emphasis — that is the ONLY emphasis mechanism. Do not put a person's name in CAPS this way.
 4. Keep it 2 lines (hook line, then CTA line) if it already is; preserve the line break.
 5. Plain text only — NEVER add bold, yellow, or any other highlighting/markup. Do not wrap any word or phrase in ** or ~~ or any other symbols. If the researcher's draft already has markup in it, strip it out (return plain unstyled text, keeping any CAPS words as-is).
-6. Emoji: keep exactly 2 — one emotional/contextual emoji on the hook line and one directional CTA emoji (⬇️/👇/⤵️) on the CTA line. If the hook line has no emotional emoji, add one that fits the emotion; if there are more than 2, trim to this structure. Never highlight/format emoji.
+6. Emoji: keep exactly 2 — one emotional/contextual emoji from ${EMOTION_EMOJI_LIST} on the hook line (matching its emotion/subject), and one directional CTA emoji from ${ARROW_EMOJI_LIST} on the CTA line. If the hook line has no emotional emoji, add one that fits from the list; if there are more than 2, trim to this structure; if either emoji isn't from its correct list, replace it with one that is. Never highlight/format emoji.
 
 ## ABSOLUTE RULE
 Never invent facts or quotes. Only edit minimally.
@@ -996,7 +1045,7 @@ function CommentBox({ onSubmit }) {
   );
 }
 
-function CommentThread({ post, currentUser, onAddComment, onOpen, forceOpen }) {
+function CommentThread({ post, currentUser, onAddComment, onToggleReaction, onOpen, forceOpen }) {
   const [open, setOpen] = useState(false);
   const comments = post.comments || [];
 
@@ -1030,6 +1079,18 @@ function CommentThread({ post, currentUser, onAddComment, onOpen, forceOpen }) {
                     <span className="text-xs text-neutral-700">{timeAgo(c.createdAt)}</span>
                   </div>
                   <p className="text-sm text-neutral-200 mt-0.5 whitespace-pre-wrap break-words">{renderMentions(c.text)}</p>
+                  <div className="flex gap-1 mt-1.5">
+                    {REACTION_EMOJIS.map((emoji) => {
+                      const count = Object.values(c.reactions || {}).filter((r) => r === emoji).length;
+                      const mine = (c.reactions || {})[currentUser] === emoji;
+                      return (
+                        <button key={emoji} onClick={() => onToggleReaction(post.id, c.id, emoji)}
+                          className={`text-xs rounded-full px-1.5 py-0.5 border leading-none ${mine ? 'border-amber-500 bg-amber-500/10' : 'border-neutral-800 hover:border-neutral-600'}`}>
+                          {emoji}{count > 0 ? <span className={mine ? 'text-amber-300 ml-0.5' : 'text-neutral-500 ml-0.5'}>{count}</span> : null}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
             ))}
@@ -1194,7 +1255,7 @@ function StoryBody({ post, canEdit, copiedHl, onEditField, onTogglePinHeadline, 
   );
 }
 
-function PostCard({ post, currentUser, canEdit, onTogglePinHeadline, onTogglePinLead, onToggleSuggestions, onEditField, onAddSnippetImages, onRemoveSnippetImage, onFormat, onArchive, onRetry, onAddComment, onOpenComments, jumpToPostId, onJumpHandled }) {
+function PostCard({ post, currentUser, canEdit, onTogglePinHeadline, onTogglePinLead, onToggleSuggestions, onEditField, onAddSnippetImages, onRemoveSnippetImage, onFormat, onArchive, onRetry, onAddComment, onToggleReaction, onOpenComments, jumpToPostId, onJumpHandled }) {
   const [showOriginal, setShowOriginal] = useState(false);
   const [copiedHl, setCopiedHl] = useState(false);
   const [lightbox, setLightbox] = useState(null);
@@ -1553,7 +1614,7 @@ function PostCard({ post, currentUser, canEdit, onTogglePinHeadline, onTogglePin
       )}
       </>)}
 
-      <CommentThread post={post} currentUser={currentUser} onAddComment={onAddComment} onOpen={onOpenComments} forceOpen={isJumpTarget} />
+      <CommentThread post={post} currentUser={currentUser} onAddComment={onAddComment} onToggleReaction={onToggleReaction} onOpen={onOpenComments} forceOpen={isJumpTarget} />
 
       {manualCopy !== null && (
         <div onClick={() => setManualCopy(null)}
@@ -1650,10 +1711,17 @@ function NotificationBell({ posts, lastSeen, currentUser, onJump }) {
 /* ============================== APP ============================== */
 
 export default function App() {
-  const [currentUser, setCurrentUser] = useState(null);
+  const [currentUser, setCurrentUser] = useState(() => {
+    try {
+      const saved = localStorage.getItem('cd_currentUser');
+      return saved && ALL_USERS.includes(saved) ? saved : null;
+    } catch (e) { return null; }
+  });
   const [posts, setPosts] = useState([]);
   const [lastSeen, setLastSeen] = useState({});
-  const [activeBoard, setActiveBoard] = useState(null);
+  const [activeBoard, setActiveBoard] = useState(() => {
+    try { return localStorage.getItem('cd_activeBoard') || null; } catch (e) { return null; }
+  });
   const [jumpToPostId, setJumpToPostId] = useState(null);
   const [toast, setToast] = useState('');
   const dirtyRef = useRef(new Set());
@@ -1673,6 +1741,20 @@ export default function App() {
   const [pushStatus, setPushStatus] = useState('unsupported');
 
   const showToast = useCallback((msg) => { setToast(msg); setTimeout(() => setToast(''), 2400); }, []);
+
+  useEffect(() => {
+    try {
+      if (currentUser) localStorage.setItem('cd_currentUser', currentUser);
+      else localStorage.removeItem('cd_currentUser');
+    } catch (e) { /* localStorage unavailable — reload will just go back to login, no crash */ }
+  }, [currentUser]);
+
+  useEffect(() => {
+    try {
+      if (activeBoard) localStorage.setItem('cd_activeBoard', activeBoard);
+      else localStorage.removeItem('cd_activeBoard');
+    } catch (e) { /* ignore */ }
+  }, [activeBoard]);
 
   const refresh = useCallback(async () => {
     try {
@@ -1725,6 +1807,45 @@ export default function App() {
     }
     setPushStatus(Notification.permission); // 'default' | 'granted' | 'denied'
   }, [currentUser]);
+
+  // Keep a ref to the latest posts so the service-worker message listener
+  // below (registered once) always sees current data, not a stale closure.
+  const postsRef = useRef(posts);
+  useEffect(() => { postsRef.current = posts; }, [posts]);
+
+  // When a notification is tapped while the app is ALREADY open in a tab, the
+  // service worker focuses that tab and posts a message here instead of
+  // reloading it — this is what actually lands you on the right post.
+  useEffect(() => {
+    if (!('serviceWorker' in navigator)) return;
+    function handleMessage(event) {
+      if (event.data && event.data.type === 'jump-to-post' && event.data.postId) {
+        const post = postsRef.current.find((p) => p.id === event.data.postId);
+        if (post) jumpTo(post);
+      }
+    }
+    navigator.serviceWorker.addEventListener('message', handleMessage);
+    return () => navigator.serviceWorker.removeEventListener('message', handleMessage);
+  }, []);
+
+  // When a notification is tapped with NO tab already open, the service
+  // worker opens a fresh one at /?postId=... — this picks that up once the
+  // board has actually loaded (posts arrives a moment after currentUser does)
+  // and then cleans the URL so a later reload doesn't re-trigger the jump.
+  const urlJumpDoneRef = useRef(false);
+  useEffect(() => {
+    if (urlJumpDoneRef.current || !currentUser) return;
+    const params = new URLSearchParams(window.location.search);
+    const targetId = params.get('postId');
+    if (!targetId) { urlJumpDoneRef.current = true; return; }
+    const post = posts.find((p) => p.id === targetId);
+    if (!post) return; // posts may still be loading — this effect re-runs as `posts` updates
+    jumpTo(post);
+    urlJumpDoneRef.current = true;
+    const url = new URL(window.location.href);
+    url.searchParams.delete('postId');
+    window.history.replaceState({}, '', url.toString());
+  }, [currentUser, posts]);
 
   async function enableNotifications() {
     try {
@@ -2188,6 +2309,31 @@ export default function App() {
     });
   }
 
+  // One reaction per person per comment (picking a different emoji replaces
+  // your previous one; clicking your current one again removes it) — same
+  // atomic-on-the-server pattern as comments, for the same reason: a reaction
+  // can land on someone else's comment, so two people reacting to the same
+  // comment at once is the one real collision risk here.
+  function toggleReaction(postId, commentId, emoji) {
+    setPosts((prev) => prev.map((p) => {
+      if (p.id !== postId) return p;
+      const comments = (p.comments || []).map((c) => {
+        if (c.id !== commentId) return c;
+        const reactions = { ...(c.reactions || {}) };
+        if (reactions[currentUser] === emoji) delete reactions[currentUser];
+        else reactions[currentUser] = emoji;
+        return { ...c, reactions };
+      });
+      return { ...p, comments };
+    }));
+    boardApi('toggleReaction', { postId, commentId, user: currentUser, emoji }).then(({ post: serverPost }) => {
+      if (serverPost) setPosts((prev) => prev.map((p) => p.id === postId ? serverPost : p));
+    }).catch((e) => {
+      console.error('Failed to save reaction', e);
+      showToast('Reaction may not have saved — check your connection.');
+    });
+  }
+
   function markSeen(postId) {
     setLastSeen((prev) => {
       const mine = { ...(prev[currentUser] || {}), [postId]: new Date().toISOString() };
@@ -2220,7 +2366,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-200 flex flex-col">
-      <header className="bg-neutral-900 border-b border-neutral-800 px-3 md:px-6 py-3.5 flex items-center justify-between sticky top-0 z-20">
+      <header className="bg-neutral-900 border-b border-neutral-800 px-3 md:px-6 py-3.5 flex items-center flex-wrap gap-y-2 justify-between sticky top-0 z-20">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center">
             <span className="text-neutral-900 font-serif italic text-sm">CD</span>
@@ -2234,18 +2380,18 @@ export default function App() {
           {pushStatus === 'default' && (
             <button onClick={enableNotifications}
               className="flex items-center gap-1.5 text-xs border border-amber-700 rounded-lg px-2.5 py-1.5 text-amber-300 hover:bg-amber-700 hover:text-neutral-900" title="Enable push notifications on this device">
-              <BellRing className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Enable notifications</span>
+              <BellRing className="w-3.5 h-3.5" /> <span className="sm:hidden">Notify me</span><span className="hidden sm:inline">Enable notifications</span>
             </button>
           )}
           {pushStatus === 'ios-needs-install' && (
             <button onClick={() => showToast('On iPhone: tap the Share icon in Safari → "Add to Home Screen" → open the app from your Home Screen, then try again.')}
               className="flex items-center gap-1.5 text-xs border border-neutral-700 rounded-lg px-2.5 py-1.5 text-neutral-400 hover:border-amber-500 hover:text-amber-300" title="Add to Home Screen to enable notifications on iPhone">
-              <BellOff className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Add to Home Screen for notifications</span>
+              <BellOff className="w-3.5 h-3.5" /> <span className="sm:hidden">Add to Home Screen</span><span className="hidden sm:inline">Add to Home Screen for notifications</span>
             </button>
           )}
           {pushStatus === 'denied' && (
             <span className="flex items-center gap-1.5 text-xs text-neutral-600" title="Notifications are blocked in your browser settings">
-              <BellOff className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Notifications blocked</span>
+              <BellOff className="w-3.5 h-3.5" /> <span className="sm:hidden">Blocked</span><span className="hidden sm:inline">Notifications blocked</span>
             </span>
           )}
           <NotificationBell posts={posts} lastSeen={lastSeen} currentUser={currentUser} onJump={jumpTo} />
@@ -2259,7 +2405,7 @@ export default function App() {
               <Trash2 className="w-4 h-4" />
             </button>
           )}
-          <button onClick={() => setCurrentUser(null)} className="p-2 rounded-lg hover:bg-neutral-800 text-neutral-500" title="Switch user">
+          <button onClick={() => { setCurrentUser(null); setActiveBoard(null); }} className="p-2 rounded-lg hover:bg-neutral-800 text-neutral-500" title="Switch user">
             <LogOut className="w-4 h-4" />
           </button>
         </div>
@@ -2334,6 +2480,7 @@ export default function App() {
                       onFormat={formatPost}
                       onArchive={archivePost}
                       onAddComment={addComment}
+                      onToggleReaction={toggleReaction}
                       onOpenComments={markSeen}
                       jumpToPostId={jumpToPostId}
                       onJumpHandled={() => setJumpToPostId(null)}

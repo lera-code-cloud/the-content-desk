@@ -107,9 +107,29 @@ export default async function handler(req, res) {
           title,
           body: comment.text.slice(0, 140),
           tag: 'content-desk-comment',
+          postId,
         }).catch((e) => console.error('push failed for', name, e.message));
       }));
 
+      res.status(200).json({ post });
+      return;
+    }
+
+    if (action === 'toggleReaction') {
+      const { postId, commentId, user, emoji } = req.body || {};
+      if (!postId || !commentId || !user || !emoji) { res.status(400).json({ error: 'Missing postId/commentId/user/emoji' }); return; }
+      const raw = await redis(['HGET', 'board:posts', postId]);
+      if (!raw) { res.status(404).json({ error: 'Post not found' }); return; }
+      const post = safeParse(raw, null);
+      if (!post) { res.status(500).json({ error: 'Stored post is corrupted' }); return; }
+      const comment = (post.comments || []).find((c) => c.id === commentId);
+      if (!comment) { res.status(404).json({ error: 'Comment not found' }); return; }
+      comment.reactions = comment.reactions || {};
+      // One reaction per person per comment — toggling your current pick removes
+      // it, picking a different one replaces it.
+      if (comment.reactions[user] === emoji) delete comment.reactions[user];
+      else comment.reactions[user] = emoji;
+      await redis(['HSET', 'board:posts', postId, JSON.stringify(post)]);
       res.status(200).json({ post });
       return;
     }
