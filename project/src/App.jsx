@@ -257,15 +257,16 @@ The post's whole job is to move readers into the COMMENTS, where the article lin
 ## FORMATTING (already apply it — do NOT return a plain draft)
 - Sentence case overall, with 1–3 of the MOST intriguing words in CAPS for punch (emphasize the intrigue, never a person's name). A few CAPS words for the whole lead is enough — never overdo it.
 - PLAIN TEXT ONLY: do NOT use any markup characters. Never output ** or ~~ or markdown of any kind in a lead. Emphasis in leads is done ONLY by writing words in CAPS.
-- EMOTIONAL EMOJI IS MANDATORY AND SEPARATE FROM THE CLOSING EMOJI (see below): every lead needs at least 1 (up to 2) emoji, chosen ONLY from this list — ${EMOTION_EMOJI_LIST} — picked because it genuinely matches the emotion AND subject of THIS lead, placed somewhere IN THE BODY of the lead — mid-sentence, not at the very end and not adjacent to the closing pointer. Choose per-lead — never the same emoji on every lead.
-- SELF-CHECK: the closing emoji from MANDATORY CLOSING below does NOT count as this body emoji. If you count up the emoji in your draft and the ONLY one is the closing one, you are missing the required body emoji — add one now, placed inside the body text, before you output the JSON.
+- EMOJI AFTER EVERY SENTENCE — MANDATORY, NO EXCEPTIONS: every single sentence in the lead ends with one emoji chosen from ${EMOTION_EMOJI_LIST}, immediately after that sentence's punctuation, matching THAT sentence's specific emotion/content. This includes the LAST sentence (the MANDATORY CLOSING sentence below) — it is never left bare. If a lead has 3 sentences, it has 3 emoji, one per sentence, never bunched at the end and never skipped on any sentence.
+- Never reuse the same emoji twice within one lead — each sentence gets a DIFFERENT emoji that fits it specifically.
+- SELF-CHECK before returning: count the sentences in your draft, then count the emoji. If the numbers don't match — including if the very last sentence has none — fix it before you output the JSON.
 
 ${NO_CTA_RULE}
 
 ${NO_ARROW_EMOJI_IN_POSTS_RULE}
 
 ## MANDATORY CLOSING — pick ONE sentence from LEAD_CLOSING_BANK, never invent your own closer
-Every lead MUST end with exactly one sentence chosen from LEAD_CLOSING_BANK below, immediately followed by ONE emoji chosen from ${EMOTION_EMOJI_LIST} that matches the lead's feeling — NEVER an arrow (see the arrow ban above). This closing emoji is IN ADDITION TO the body emoji above, not a substitute for it — a lead with only this closing emoji and no other emoji is incomplete.
+Every lead MUST end with exactly one sentence chosen from LEAD_CLOSING_BANK below, immediately followed by its own emoji per the rule above (chosen from ${EMOTION_EMOJI_LIST}, matching the lead's feeling — NEVER an arrow, see the arrow ban above). This closing sentence is not exempt from the per-sentence emoji rule — it always gets one too.
 - FIRST decide what this post's actual payoff is — new details/facts, photos, video/footage, or just "a moment" in general — and pick the matching category from the bank. Do not default to the DETAILS category just because it's listed first.
 - You may lightly adapt a bank sentence's wording to fit better (e.g. "The images speak volumes" → "The details speak volumes" if the payoff isn't really images) as long as the structure and meaning stay the same. Do not write a wholly new sentence that isn't based on the bank.
 - BANNED, no exceptions: "in the comments", "in the comments below", "below" used as a location pointer, "comment below", or any rephrasing of these — the bank sentences replace that function entirely; none of them should ever be edited to reintroduce this wording.
@@ -274,7 +275,7 @@ Every lead MUST end with exactly one sentence chosen from LEAD_CLOSING_BANK belo
 ${LEAD_CLOSING_BANK}
 
 ## QUESTIONS
-- Only include a question if it's genuinely relevant and natural for that specific lead. Do NOT force a question into every lead — many strong leads have none.
+- Only include a question if it's genuinely relevant and natural for that specific lead. Do NOT force a question into every lead — many strong leads have none. A question still counts as a sentence and still needs its own trailing emoji.
 
 ${QUOTE_RULE}
 
@@ -307,10 +308,10 @@ ${NO_ARROW_EMOJI_IN_POSTS_RULE}
 1. Sentence case overall (proper nouns normal) — EXCEPT 1–3 of the most intriguing words in CAPS. Do not overdo it.
 2. Fix grammar and awkward/non-native phrasing only. Do not restructure or add new claims.
 3. EXCEPTION: same as the headline exception above — if the researcher's draft lead contains a banned call-to-action verb (see NO_CTA_RULE above), remove/rewrite just that word or phrase even though it goes beyond a pure grammar fix.
-4. EMOJI: at least 1 emoji, chosen ONLY from this list — ${EMOTION_EMOJI_LIST} — matching the emotion/content, must be present somewhere IN THE BODY of the lead (mid-sentence, not clumped at the end) — this is separate from and in addition to the closing emoji in rule 5. If the draft only has the closing emoji and no body emoji, ADD one that fits the emotion before returning. Trim if there are more than 2 body emoji. If the draft has an arrow emoji anywhere, remove it (see arrow ban above) and replace with a fitting emoji from the list if one is still needed there.
-5. The lead MUST end with exactly one sentence from LEAD_CLOSING_BANK below (pick the category matching whether the payoff is details, photos, video, or general — light adaptation of a bank sentence's wording is fine, inventing a new one is not), immediately followed by ONE emoji from ${EMOTION_EMOJI_LIST} matching the lead's feeling (never an arrow). This closing emoji does not count as the body emoji from rule 4.
-6. EXCEPTION to "don't restructure" (rule 2): if the researcher's draft still ends with "in the comments", "in the comments below", "below" as a location pointer, or "comment below" — this wording is banned, not a style choice. Replace it with a fitting LEAD_CLOSING_BANK sentence even though this goes beyond a pure grammar fix.
-7. Keep a question ONLY if it's genuinely relevant; don't add one just to have one.
+4. EMOJI AFTER EVERY SENTENCE — MANDATORY, NO EXCEPTIONS: every single sentence in the lead ends with one emoji chosen from ${EMOTION_EMOJI_LIST}, immediately after that sentence's punctuation, matching THAT sentence's specific emotion/content — never the same emoji twice in one lead. If the researcher's draft has a sentence with no trailing emoji (this includes the very last sentence), ADD one that fits before returning — this is a content rule, not a style choice, so it overrides "don't restructure" from rule 2. If the draft has an arrow emoji anywhere, remove it (see arrow ban above) and replace with a fitting emoji from the list.
+5. The lead MUST end with exactly one sentence from LEAD_CLOSING_BANK below (pick the category matching whether the payoff is details, photos, video, or general — light adaptation of a bank sentence's wording is fine, inventing a new one is not). This closing sentence is NOT exempt from rule 4 — it always gets its own trailing emoji too, never left bare.
+6. EXCEPTION to "don't restructure" (rule 2): if the researcher's draft still ends with "in the comments", "in the comments below", "below" as a location pointer, or "comment below" — this wording is banned, not a style choice. Replace it with a fitting LEAD_CLOSING_BANK sentence (plus its own trailing emoji per rule 4) even though this goes beyond a pure grammar fix.
+7. Keep a question ONLY if it's genuinely relevant; don't add one just to have one. A question still counts as a sentence and still needs its own trailing emoji.
 
 ${LEAD_CLOSING_BANK}
 
