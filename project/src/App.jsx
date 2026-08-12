@@ -606,13 +606,31 @@ function renderBoldMarkup(text) {
   });
 }
 
-function renderMentions(text) {
-  return String(text == null ? '' : text).split(/(@[A-Za-z]+)/g).map((p, i) => {
-    const name = p.slice(1);
-    if (p.startsWith('@') && ALL_USERS.includes(name)) {
-      return <span key={i} className="text-amber-300 font-medium">{p}</span>;
+// Renders @mentions (highlighted) AND turns any http(s):// or www. URL into a
+// real clickable link, opened in a new tab. Trims common trailing punctuation
+// (., ,, ), !, ?) off a URL so "check this out https://x.com/y." doesn't pull
+// the period into the link.
+function renderCommentText(text) {
+  const str = String(text == null ? '' : text);
+  const tokenRe = /(@[A-Za-z]+|https?:\/\/[^\s]+|www\.[^\s]+)/g;
+  return str.split(tokenRe).filter((p) => p !== undefined && p !== '').map((part, i) => {
+    if (/^(https?:\/\/|www\.)/i.test(part)) {
+      const trailingMatch = part.match(/[.,;:!?)]+$/);
+      const trail = trailingMatch ? trailingMatch[0] : '';
+      const display = trail ? part.slice(0, part.length - trail.length) : part;
+      const href = /^https?:\/\//i.test(display) ? display : `https://${display}`;
+      return (
+        <React.Fragment key={i}>
+          <a href={href} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}
+            className="text-amber-300 underline hover:text-amber-200 break-all">{display}</a>{trail}
+        </React.Fragment>
+      );
     }
-    return <React.Fragment key={i}>{p}</React.Fragment>;
+    const name = part.slice(1);
+    if (part.startsWith('@') && ALL_USERS.includes(name)) {
+      return <span key={i} className="text-amber-300 font-medium">{part}</span>;
+    }
+    return <React.Fragment key={i}>{part}</React.Fragment>;
   });
 }
 
@@ -1045,8 +1063,11 @@ function CommentBox({ onSubmit }) {
   );
 }
 
-function CommentThread({ post, currentUser, onAddComment, onToggleReaction, onOpen, forceOpen }) {
+function CommentThread({ post, currentUser, onAddComment, onEditComment, onToggleReaction, onOpen, forceOpen }) {
   const [open, setOpen] = useState(false);
+  const [pickerOpenFor, setPickerOpenFor] = useState(null);
+  const [editingId, setEditingId] = useState(null);
+  const [editDraft, setEditDraft] = useState('');
   const comments = post.comments || [];
 
   useEffect(() => {
@@ -1060,6 +1081,21 @@ function CommentThread({ post, currentUser, onAddComment, onToggleReaction, onOp
     if (next) onOpen(post.id);
   }
 
+  function pick(commentId, emoji) {
+    onToggleReaction(post.id, commentId, emoji);
+    setPickerOpenFor(null);
+  }
+
+  function startEdit(c) {
+    setEditingId(c.id);
+    setEditDraft(c.text);
+  }
+  function saveEdit(commentId) {
+    const trimmed = editDraft.trim();
+    if (trimmed) onEditComment(post.id, commentId, trimmed);
+    setEditingId(null);
+  }
+
   return (
     <div className="mt-4 pt-3 border-t border-neutral-800">
       <button onClick={toggle} className="flex items-center gap-1.5 text-xs text-neutral-500 hover:text-neutral-300">
@@ -1070,30 +1106,65 @@ function CommentThread({ post, currentUser, onAddComment, onToggleReaction, onOp
         <div className="mt-3">
           <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
             {comments.length === 0 && <p className="text-neutral-700 text-xs italic">No comments yet — leave an idea or note.</p>}
-            {comments.map((c) => (
-              <div key={c.id} className="flex gap-2 items-start">
-                <Avatar name={c.author} size="w-6 h-6 text-xs" />
-                <div className="flex-1 bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2">
-                  <div className="flex items-baseline gap-2">
-                    <span className="text-xs font-medium text-neutral-300">{c.author}</span>
-                    <span className="text-xs text-neutral-700">{timeAgo(c.createdAt)}</span>
-                  </div>
-                  <p className="text-sm text-neutral-200 mt-0.5 whitespace-pre-wrap break-words">{renderMentions(c.text)}</p>
-                  <div className="flex gap-1 mt-1.5">
-                    {REACTION_EMOJIS.map((emoji) => {
-                      const count = Object.values(c.reactions || {}).filter((r) => r === emoji).length;
-                      const mine = (c.reactions || {})[currentUser] === emoji;
-                      return (
-                        <button key={emoji} onClick={() => onToggleReaction(post.id, c.id, emoji)}
-                          className={`text-xs rounded-full px-1.5 py-0.5 border leading-none ${mine ? 'border-amber-500 bg-amber-500/10' : 'border-neutral-800 hover:border-neutral-600'}`}>
-                          {emoji}{count > 0 ? <span className={mine ? 'text-amber-300 ml-0.5' : 'text-neutral-500 ml-0.5'}>{count}</span> : null}
-                        </button>
-                      );
-                    })}
+            {comments.map((c) => {
+              const usedEmojis = REACTION_EMOJIS.filter((emoji) => Object.values(c.reactions || {}).includes(emoji));
+              const isEditing = editingId === c.id;
+              return (
+                <div key={c.id} className="flex gap-2 items-start">
+                  <Avatar name={c.author} size="w-6 h-6 text-xs" />
+                  <div className="flex-1 bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2">
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-xs font-medium text-neutral-300">{c.author}</span>
+                      <span className="text-xs text-neutral-700">{timeAgo(c.createdAt)}</span>
+                      {c.editedAt && <span className="text-xs text-neutral-700 italic">(edited)</span>}
+                      {c.author === currentUser && !isEditing && (
+                        <button onClick={() => startEdit(c)} className="text-xs text-neutral-600 hover:text-amber-300 ml-auto">Edit</button>
+                      )}
+                    </div>
+                    {isEditing ? (
+                      <div className="mt-1">
+                        <AutoTextarea value={editDraft} minHeight={40}
+                          onChange={(e) => setEditDraft(e.target.value)}
+                          className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-2 py-1.5 text-sm text-neutral-100 outline-none focus:border-amber-500" />
+                        <div className="flex gap-2 mt-1.5">
+                          <button onClick={() => saveEdit(c.id)} className="text-xs border border-amber-700 rounded px-2 py-1 text-amber-300 hover:bg-amber-700 hover:text-neutral-900">Save</button>
+                          <button onClick={() => setEditingId(null)} className="text-xs border border-neutral-700 rounded px-2 py-1 text-neutral-400 hover:border-neutral-500">Cancel</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-neutral-200 mt-0.5 whitespace-pre-wrap break-words">{renderCommentText(c.text)}</p>
+                    )}
+                    {!isEditing && (
+                    <div className="relative flex items-center gap-1 mt-1.5">
+                      {usedEmojis.map((emoji) => {
+                        const count = Object.values(c.reactions || {}).filter((r) => r === emoji).length;
+                        const mine = (c.reactions || {})[currentUser] === emoji;
+                        return (
+                          <button key={emoji} onClick={() => onToggleReaction(post.id, c.id, emoji)}
+                            className={`text-xs rounded-full px-1.5 py-0.5 border leading-none flex items-center gap-0.5 ${mine ? 'border-amber-500 bg-amber-500/10' : 'border-neutral-800 hover:border-neutral-600'}`}>
+                            <span>{emoji}</span><span className={mine ? 'text-amber-300' : 'text-neutral-500'}>{count}</span>
+                          </button>
+                        );
+                      })}
+                      <button onClick={() => setPickerOpenFor(pickerOpenFor === c.id ? null : c.id)}
+                        className="text-xs rounded-full w-5 h-5 flex items-center justify-center border border-neutral-800 text-neutral-600 hover:border-neutral-600 hover:text-neutral-300 leading-none">
+                        +
+                      </button>
+                      {pickerOpenFor === c.id && (
+                        <div className="absolute bottom-full left-0 mb-1 flex gap-1 bg-neutral-800 border border-neutral-700 rounded-full px-2 py-1 shadow-xl z-20">
+                          {REACTION_EMOJIS.map((emoji) => (
+                            <button key={emoji} onClick={() => pick(c.id, emoji)} className="text-sm hover:scale-125 transition-transform">
+                              {emoji}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    )}
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
           <CommentBox onSubmit={(text) => onAddComment(post.id, text)} />
         </div>
@@ -1255,7 +1326,7 @@ function StoryBody({ post, canEdit, copiedHl, onEditField, onTogglePinHeadline, 
   );
 }
 
-function PostCard({ post, currentUser, canEdit, onTogglePinHeadline, onTogglePinLead, onToggleSuggestions, onEditField, onAddSnippetImages, onRemoveSnippetImage, onFormat, onArchive, onRetry, onAddComment, onToggleReaction, onOpenComments, jumpToPostId, onJumpHandled }) {
+function PostCard({ post, currentUser, canEdit, onTogglePinHeadline, onTogglePinLead, onToggleSuggestions, onEditField, onAddSnippetImages, onRemoveSnippetImage, onFormat, onArchive, onRetry, onAddComment, onEditComment, onToggleReaction, onOpenComments, jumpToPostId, onJumpHandled }) {
   const [showOriginal, setShowOriginal] = useState(false);
   const [copiedHl, setCopiedHl] = useState(false);
   const [lightbox, setLightbox] = useState(null);
@@ -1614,7 +1685,7 @@ function PostCard({ post, currentUser, canEdit, onTogglePinHeadline, onTogglePin
       )}
       </>)}
 
-      <CommentThread post={post} currentUser={currentUser} onAddComment={onAddComment} onToggleReaction={onToggleReaction} onOpen={onOpenComments} forceOpen={isJumpTarget} />
+      <CommentThread post={post} currentUser={currentUser} onAddComment={onAddComment} onEditComment={onEditComment} onToggleReaction={onToggleReaction} onOpen={onOpenComments} forceOpen={isJumpTarget} />
 
       {manualCopy !== null && (
         <div onClick={() => setManualCopy(null)}
@@ -1800,7 +1871,13 @@ export default function App() {
       setPushStatus('unsupported');
       return;
     }
-    navigator.serviceWorker.register('/sw.js').catch((e) => console.error('SW registration failed', e));
+    navigator.serviceWorker.register('/sw.js').then((reg) => {
+      // Browsers cache the service worker aggressively and only check for a
+      // new version occasionally — force a check on every load so a fix
+      // shipped in sw.js (like the notification-click deep link) actually
+      // takes effect instead of an old cached worker quietly staying active.
+      reg.update().catch(() => {});
+    }).catch((e) => console.error('SW registration failed', e));
     if (isIOSDevice() && !isStandaloneDisplay()) {
       setPushStatus('ios-needs-install');
       return;
@@ -2309,6 +2386,25 @@ export default function App() {
     });
   }
 
+  // Editing your own comment, same atomic-on-the-server pattern. Re-derives
+  // @mentions from the new text — it doesn't re-notify anyone for a mention
+  // that was already there, only future comments/reactions trigger pushes.
+  function editComment(postId, commentId, text) {
+    const mentions = extractMentions(text);
+    const editedAt = new Date().toISOString();
+    setPosts((prev) => prev.map((p) => {
+      if (p.id !== postId) return p;
+      const comments = (p.comments || []).map((c) => c.id === commentId ? { ...c, text, mentions, editedAt } : c);
+      return { ...p, comments };
+    }));
+    boardApi('editComment', { postId, commentId, text, mentions }).then(({ post: serverPost }) => {
+      if (serverPost) setPosts((prev) => prev.map((p) => p.id === postId ? serverPost : p));
+    }).catch((e) => {
+      console.error('Failed to save comment edit', e);
+      showToast('Edit may not have saved — check your connection.');
+    });
+  }
+
   // One reaction per person per comment (picking a different emoji replaces
   // your previous one; clicking your current one again removes it) — same
   // atomic-on-the-server pattern as comments, for the same reason: a reaction
@@ -2480,6 +2576,7 @@ export default function App() {
                       onFormat={formatPost}
                       onArchive={archivePost}
                       onAddComment={addComment}
+                      onEditComment={editComment}
                       onToggleReaction={toggleReaction}
                       onOpenComments={markSeen}
                       jumpToPostId={jumpToPostId}

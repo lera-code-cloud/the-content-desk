@@ -39,14 +39,21 @@ self.addEventListener('notificationclick', (event) => {
   const targetUrl = (event.notification.data && event.notification.data.url) || '/';
 
   event.waitUntil(
-    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
-      for (const client of clientList) {
-        if (client.url.includes(self.location.origin) && 'focus' in client) {
-          // The app is already open — tell it which post to jump to instead of
-          // just focusing the tab and leaving it wherever it was.
-          client.postMessage({ type: 'jump-to-post', postId });
-          return client.focus();
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(async (clientList) => {
+      const existing = clientList.find((c) => c.url.includes(self.location.origin));
+      if (existing) {
+        // Preferred path: message the already-open app to jump there instantly,
+        // no reload. Also focus it so it comes to the front.
+        existing.postMessage({ type: 'jump-to-post', postId });
+        if ('focus' in existing) { try { await existing.focus(); } catch (e) { /* ignore */ } }
+        // iOS's Web Push implementation for home-screen apps doesn't always
+        // reliably deliver postMessage/focus to an already-running standalone
+        // app — as a second attempt, force the URL itself if the browser
+        // supports it, so the app's own on-load URL handling can pick it up.
+        if (postId && 'navigate' in existing) {
+          try { await existing.navigate(targetUrl); } catch (e) { /* not supported here, ignore */ }
         }
+        return;
       }
       // No tab open at all — open a fresh one with the post id in the URL, the
       // app reads that on load and jumps there once the board has loaded.

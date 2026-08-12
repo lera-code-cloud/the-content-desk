@@ -134,6 +134,23 @@ export default async function handler(req, res) {
       return;
     }
 
+    if (action === 'editComment') {
+      const { postId, commentId, text, mentions } = req.body || {};
+      if (!postId || !commentId || typeof text !== 'string') { res.status(400).json({ error: 'Missing postId/commentId/text' }); return; }
+      const raw = await redis(['HGET', 'board:posts', postId]);
+      if (!raw) { res.status(404).json({ error: 'Post not found' }); return; }
+      const post = safeParse(raw, null);
+      if (!post) { res.status(500).json({ error: 'Stored post is corrupted' }); return; }
+      const comment = (post.comments || []).find((c) => c.id === commentId);
+      if (!comment) { res.status(404).json({ error: 'Comment not found' }); return; }
+      comment.text = text;
+      comment.mentions = Array.isArray(mentions) ? mentions : [];
+      comment.editedAt = new Date().toISOString();
+      await redis(['HSET', 'board:posts', postId, JSON.stringify(post)]);
+      res.status(200).json({ post });
+      return;
+    }
+
     if (action === 'saveLastSeen') {
       const { user, seenMap } = req.body || {};
       if (!user) { res.status(400).json({ error: 'Missing user' }); return; }
