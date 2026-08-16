@@ -1292,7 +1292,7 @@ function TopicModal({ topic, currentUser, canEdit, onClose, onEditField, onMarkR
         </div>
 
         {canEditContent && isDraft && (
-          <button onClick={() => onMarkReady(topic.id)}
+          <button onClick={() => { onMarkReady(topic.id); onClose(); }}
             className="mt-3 text-sm bg-amber-200 text-neutral-900 rounded-lg px-4 py-2 font-medium hover:bg-amber-100 flex items-center gap-1.5">
             <Check className="w-4 h-4" /> Ready — show to everyone
           </button>
