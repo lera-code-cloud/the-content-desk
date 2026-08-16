@@ -134,6 +134,22 @@ export default async function handler(req, res) {
       return;
     }
 
+    if (action === 'toggleTopicReaction') {
+      const { postId, user, emoji } = req.body || {};
+      if (!postId || !user || !emoji) { res.status(400).json({ error: 'Missing postId/user/emoji' }); return; }
+      const raw = await redis(['HGET', 'board:posts', postId]);
+      if (!raw) { res.status(404).json({ error: 'Post not found' }); return; }
+      const post = safeParse(raw, null);
+      if (!post) { res.status(500).json({ error: 'Stored post is corrupted' }); return; }
+      post.reactions = post.reactions || {};
+      // Same one-reaction-per-person model as comments, but on the topic itself.
+      if (post.reactions[user] === emoji) delete post.reactions[user];
+      else post.reactions[user] = emoji;
+      await redis(['HSET', 'board:posts', postId, JSON.stringify(post)]);
+      res.status(200).json({ post });
+      return;
+    }
+
     if (action === 'editComment') {
       const { postId, commentId, text, mentions } = req.body || {};
       if (!postId || !commentId || typeof text !== 'string') { res.status(400).json({ error: 'Missing postId/commentId/text' }); return; }

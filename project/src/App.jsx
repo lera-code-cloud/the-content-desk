@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Bell, BellRing, BellOff, MessageCircle, Copy, Check, ChevronDown, ChevronUp, Sparkles, LogOut, Send, RotateCcw, Archive as ArchiveIcon, Wand2, Image as ImageIcon, X as XIcon, Trash2 } from 'lucide-react';
+import { Bell, BellRing, BellOff, MessageCircle, Copy, Check, ChevronDown, ChevronUp, Sparkles, LogOut, Send, RotateCcw, Archive as ArchiveIcon, Wand2, Image as ImageIcon, X as XIcon, Trash2, Plus, Link2 as LinkIcon } from 'lucide-react';
 
 /* ============================== CONSTANTS ============================== */
 
@@ -1174,6 +1174,213 @@ function CommentThread({ post, currentUser, onAddComment, onEditComment, onToggl
   );
 }
 
+/* ============================== TOPICS ============================== */
+
+function TopicCompactCard({ topic, currentUser, canEdit, onOpen, onDelete }) {
+  const thumbsUp = Object.values(topic.reactions || {}).filter((r) => r === '👍').length;
+  const thumbsDown = Object.values(topic.reactions || {}).filter((r) => r === '👎').length;
+  const commentCount = (topic.comments || []).length;
+  const isDraft = topic.status === 'draft';
+  const isMine = topic.author === currentUser;
+
+  return (
+    <div onClick={onOpen}
+      className={`relative shrink-0 w-40 h-28 rounded-xl border p-2.5 cursor-pointer flex flex-col justify-between transition-colors ${isDraft ? 'border-dashed border-amber-700 bg-amber-500/5 hover:border-amber-500' : 'border-neutral-800 bg-neutral-900 hover:border-neutral-600'}`}>
+      {canEdit && isMine && (
+        <button onClick={(e) => { e.stopPropagation(); onDelete(topic.id); }}
+          className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-neutral-800 border border-neutral-600 text-neutral-300 flex items-center justify-center hover:bg-rose-700 hover:border-rose-600 hover:text-white z-10">
+          <XIcon className="w-3 h-3" />
+        </button>
+      )}
+      <div className="flex items-center gap-1.5">
+        <Avatar name={topic.author} size="w-4 h-4 text-[9px]" />
+        {isDraft && <span className="text-[10px] text-amber-400 uppercase tracking-wide">Draft</span>}
+      </div>
+      <p className="text-xs text-neutral-300 line-clamp-3 flex-1 mt-1 break-words">
+        {topic.text ? topic.text : <span className="italic text-neutral-600">Empty topic…</span>}
+      </p>
+      <div className="flex items-center gap-2 text-[11px] text-neutral-500 mt-1">
+        {topic.link && <LinkIcon className="w-3 h-3" />}
+        {(topic.snippetImages || []).length > 0 && <ImageIcon className="w-3 h-3" />}
+        {(thumbsUp > 0 || thumbsDown > 0) && <span>👍{thumbsUp} 👎{thumbsDown}</span>}
+        {commentCount > 0 && <span className="flex items-center gap-0.5"><MessageCircle className="w-3 h-3" />{commentCount}</span>}
+      </div>
+    </div>
+  );
+}
+
+function TopicModal({ topic, currentUser, canEdit, onClose, onEditField, onMarkReady, onAddSnippetImages, onRemoveSnippetImage, onDelete, onToggleTopicReaction, onAddComment, onEditComment, onToggleReaction, onOpenComments }) {
+  const [uploadingSnippet, setUploadingSnippet] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
+  const [lightbox, setLightbox] = useState(null);
+  const isMine = topic.author === currentUser;
+  const isDraft = topic.status === 'draft';
+  const canEditContent = canEdit && isMine;
+  const myReaction = (topic.reactions || {})[currentUser];
+  const thumbsUp = Object.values(topic.reactions || {}).filter((r) => r === '👍').length;
+  const thumbsDown = Object.values(topic.reactions || {}).filter((r) => r === '👎').length;
+
+  return (
+    <div onClick={onClose} className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4 sm:p-6">
+      <div onClick={(e) => e.stopPropagation()} className="bg-neutral-900 border border-neutral-800 rounded-2xl p-5 max-w-lg w-full max-h-[85vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <Avatar name={topic.author} />
+            <span className="text-sm text-neutral-300">{topic.author}</span>
+            <span className="text-xs px-2 py-0.5 rounded border border-neutral-700 bg-neutral-800 text-neutral-400">Topic</span>
+            {isDraft && <span className="text-xs px-2 py-0.5 rounded border border-amber-700 bg-amber-500/10 text-amber-300">Draft — only you can see this</span>}
+          </div>
+          <button onClick={onClose} className="w-7 h-7 rounded-full hover:bg-neutral-800 text-neutral-500 flex items-center justify-center shrink-0">
+            <XIcon className="w-4 h-4" />
+          </button>
+        </div>
+
+        {canEditContent ? (
+          <AutoTextarea value={topic.text} minHeight={70}
+            onChange={(e) => onEditField(topic.id, 'text', e.target.value)}
+            placeholder="What's the topic idea?"
+            className="w-full bg-neutral-950 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-100 placeholder-neutral-600 outline-none focus:border-amber-500" />
+        ) : (
+          <p className="text-sm text-neutral-200 whitespace-pre-wrap break-words">{renderCommentText(topic.text)}</p>
+        )}
+
+        {canEditContent ? (
+          <input value={topic.link || ''} onChange={(e) => onEditField(topic.id, 'link', e.target.value)}
+            placeholder="Add a link (optional)"
+            className="w-full mt-2 bg-neutral-950 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-100 placeholder-neutral-600 outline-none focus:border-amber-500" />
+        ) : topic.link ? (
+          <p className="mt-2 text-sm break-all">{renderCommentText(topic.link)}</p>
+        ) : null}
+
+        <div className="mt-3">
+          {canEditContent ? (
+            <div
+              onDragOver={(e) => { e.preventDefault(); if (!dragOver) setDragOver(true); }}
+              onDragLeave={(e) => { e.preventDefault(); setDragOver(false); }}
+              onDrop={async (e) => { e.preventDefault(); setDragOver(false); const files = e.dataTransfer.files; if (!files || !files.length) return; setUploadingSnippet(true); await onAddSnippetImages(topic.id, files); setUploadingSnippet(false); }}
+              className={"rounded-lg border border-dashed transition-colors p-3 " + (dragOver ? "border-amber-500 bg-amber-500/10" : "border-neutral-700")}>
+              {(topic.snippetImages && topic.snippetImages.length > 0) && (
+                <div className="flex flex-wrap gap-2 mb-2.5">
+                  {topic.snippetImages.map((src, i) => (
+                    <div key={i} className="relative">
+                      <img src={src} alt="" onClick={() => setLightbox(src)} className="w-20 h-20 object-cover rounded-lg border border-neutral-700 cursor-zoom-in" />
+                      <button onClick={() => onRemoveSnippetImage(topic.id, i)} className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-neutral-800 border border-neutral-600 text-neutral-300 text-xs flex items-center justify-center hover:bg-rose-700 hover:border-rose-600 hover:text-white">✕</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="flex items-center gap-3 flex-wrap">
+                <span className="text-xs text-neutral-500">{uploadingSnippet ? <><Dots /> Adding…</> : (dragOver ? 'Drop photos here' : 'Drag photos here, or')}</span>
+                {!uploadingSnippet && (
+                  <label className="text-xs border border-neutral-700 rounded-lg px-3 py-1.5 text-neutral-400 hover:border-amber-500 hover:text-amber-300 cursor-pointer inline-flex items-center gap-1.5">
+                    <ImageIcon className="w-3.5 h-3.5" /> Browse
+                    <input type="file" accept="image/*" multiple className="hidden"
+                      onChange={async (e) => { const files = Array.from(e.target.files || []); e.target.value = ''; setUploadingSnippet(true); await onAddSnippetImages(topic.id, files); setUploadingSnippet(false); }} />
+                  </label>
+                )}
+              </div>
+            </div>
+          ) : (
+            (topic.snippetImages && topic.snippetImages.length > 0) && (
+              <div className="flex flex-wrap gap-2">
+                {topic.snippetImages.map((src, i) => (
+                  <img key={i} src={src} alt="" onClick={() => setLightbox(src)} className="w-20 h-20 object-cover rounded-lg border border-neutral-700 cursor-zoom-in" />
+                ))}
+              </div>
+            )
+          )}
+        </div>
+
+        {canEditContent && isDraft && (
+          <button onClick={() => onMarkReady(topic.id)}
+            className="mt-3 text-sm bg-amber-200 text-neutral-900 rounded-lg px-4 py-2 font-medium hover:bg-amber-100 flex items-center gap-1.5">
+            <Check className="w-4 h-4" /> Ready — show to everyone
+          </button>
+        )}
+
+        <div className="flex items-center gap-2 mt-4 pt-3 border-t border-neutral-800">
+          <button onClick={() => onToggleTopicReaction(topic.id, '👍')}
+            className={`text-sm rounded-full px-3 py-1 border flex items-center gap-1 ${myReaction === '👍' ? 'border-amber-500 bg-amber-500/10 text-amber-300' : 'border-neutral-700 text-neutral-400 hover:border-neutral-500'}`}>
+            👍 {thumbsUp}
+          </button>
+          <button onClick={() => onToggleTopicReaction(topic.id, '👎')}
+            className={`text-sm rounded-full px-3 py-1 border flex items-center gap-1 ${myReaction === '👎' ? 'border-amber-500 bg-amber-500/10 text-amber-300' : 'border-neutral-700 text-neutral-400 hover:border-neutral-500'}`}>
+            👎 {thumbsDown}
+          </button>
+          {canEditContent && (
+            <button onClick={() => { onDelete(topic.id); onClose(); }}
+              className="ml-auto text-xs text-neutral-600 hover:text-rose-400">Delete topic</button>
+          )}
+        </div>
+
+        <CommentThread post={topic} currentUser={currentUser} onAddComment={onAddComment} onEditComment={onEditComment} onToggleReaction={onToggleReaction} onOpen={onOpenComments} forceOpen={true} />
+      </div>
+
+      {lightbox && (
+        <div onClick={(e) => { e.stopPropagation(); setLightbox(null); }}
+          className="fixed inset-0 z-[60] bg-black/80 flex items-center justify-center p-6 cursor-zoom-out">
+          <img src={lightbox} alt="topic preview" className="max-w-full max-h-full rounded-lg shadow-2xl" />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TopicsRow({ topics, currentUser, isOwn, onCreateTopic, onEditField, onMarkReady, onAddSnippetImages, onRemoveSnippetImage, onDelete, onToggleTopicReaction, onAddComment, onEditComment, onToggleReaction, onOpenComments, jumpToPostId, onJumpHandled }) {
+  const [openTopicId, setOpenTopicId] = useState(null);
+  const openTopic = topics.find((t) => t.id === openTopicId);
+
+  // Coming here from a notification click (jumpTo sets this at the App level) —
+  // if it points at one of THIS board's topics, open it automatically instead
+  // of leaving the person to find it themselves in the strip.
+  useEffect(() => {
+    if (jumpToPostId && topics.some((t) => t.id === jumpToPostId)) {
+      setOpenTopicId(jumpToPostId);
+      onJumpHandled && onJumpHandled();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jumpToPostId, topics]);
+
+  return (
+    <div className="mb-6 max-w-6xl">
+      <div className="text-sm font-medium text-neutral-400 mb-3">Topics</div>
+      <div className="flex gap-3 overflow-x-auto pb-2">
+        {isOwn && (
+          <button onClick={() => { const id = onCreateTopic(); setOpenTopicId(id); }}
+            className="shrink-0 w-40 h-28 rounded-xl border border-dashed border-neutral-700 flex flex-col items-center justify-center gap-1 text-neutral-500 hover:border-amber-500 hover:text-amber-300">
+            <Plus className="w-5 h-5" />
+            <span className="text-xs">New topic</span>
+          </button>
+        )}
+        {topics.map((t) => (
+          <TopicCompactCard key={t.id} topic={t} currentUser={currentUser} canEdit={isOwn} onOpen={() => setOpenTopicId(t.id)} onDelete={onDelete} />
+        ))}
+        {topics.length === 0 && !isOwn && (
+          <div className="shrink-0 text-xs text-neutral-700 italic flex items-center px-2">No topics yet.</div>
+        )}
+      </div>
+      {openTopic && (
+        <TopicModal
+          topic={openTopic}
+          currentUser={currentUser}
+          canEdit={isOwn}
+          onClose={() => setOpenTopicId(null)}
+          onEditField={onEditField}
+          onMarkReady={onMarkReady}
+          onAddSnippetImages={onAddSnippetImages}
+          onRemoveSnippetImage={onRemoveSnippetImage}
+          onDelete={onDelete}
+          onToggleTopicReaction={onToggleTopicReaction}
+          onAddComment={onAddComment}
+          onEditComment={onEditComment}
+          onToggleReaction={onToggleReaction}
+          onOpenComments={onOpenComments}
+        />
+      )}
+    </div>
+  );
+}
+
 /* ============================== POST CARD ============================== */
 
 function StoryBody({ post, canEdit, copiedHl, onEditField, onTogglePinHeadline, onToggleSuggestions, onFormat, onArchive, onCopyCaption, onAddSnippetImages, onRemoveSnippetImage, setLightbox, dragOver, setDragOver, uploadingSnippet, setUploadingSnippet }) {
@@ -2222,6 +2429,40 @@ export default function App() {
     runGeneration(postId, form);
   }
 
+  // Topics: a lightweight strip item — text, optional link, optional photos.
+  // Starts as a draft only the author can see; everyone else sees it once
+  // markTopicReady flips it to 'ready'.
+  function createTopic() {
+    const topicId = uid();
+    const topic = {
+      id: topicId, kind: 'topic', author: currentUser, status: 'draft',
+      text: '', link: '', snippetImages: [], reactions: {}, comments: [],
+      createdAt: new Date().toISOString(),
+    };
+    persist((prev) => [topic, ...prev]);
+    return topicId;
+  }
+
+  function markTopicReady(topicId) {
+    persist((prev) => prev.map((p) => p.id === topicId ? { ...p, status: 'ready', readyAt: new Date().toISOString() } : p));
+  }
+
+  function toggleTopicReaction(topicId, emoji) {
+    setPosts((prev) => prev.map((p) => {
+      if (p.id !== topicId) return p;
+      const reactions = { ...(p.reactions || {}) };
+      if (reactions[currentUser] === emoji) delete reactions[currentUser];
+      else reactions[currentUser] = emoji;
+      return { ...p, reactions };
+    }));
+    boardApi('toggleTopicReaction', { postId: topicId, user: currentUser, emoji }).then(({ post: serverPost }) => {
+      if (serverPost) setPosts((prev) => prev.map((p) => p.id === topicId ? serverPost : p));
+    }).catch((e) => {
+      console.error('Failed to save topic reaction', e);
+      showToast('Reaction may not have saved — check your connection.');
+    });
+  }
+
   function retryPost(postId) {
     const post = posts.find((p) => p.id === postId);
     if (!post) return;
@@ -2364,7 +2605,7 @@ export default function App() {
   }
 
   function archivePost(postId) {
-    if (!window.confirm('Mark this done and remove it from the board? This cannot be undone.')) return;
+    if (!window.confirm('Remove this from the board? This cannot be undone.')) return;
     setPosts((prev) => prev.filter((p) => p.id !== postId));
     boardApi('deletePost', { postId }).catch((e) => console.error('Failed to delete post', e));
     showToast('Removed from board ✓');
@@ -2459,7 +2700,13 @@ export default function App() {
   if (!currentUser) return <LoginScreen onSelect={setCurrentUser} />;
 
   const isOwn = activeBoard === currentUser && USERS.includes(currentUser);
-  const visiblePosts = posts.filter((p) => p.author === activeBoard && p.status !== 'archived').sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  const visiblePosts = posts.filter((p) => p.author === activeBoard && p.status !== 'archived' && (p.kind || 'post') !== 'topic').sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  // Drafts are only visible to the person who created them — everyone else only
+  // sees a topic once its author marks it Ready. New topics appear added to the
+  // right, oldest to newest, like a left-to-right strip rather than stacking.
+  const visibleTopics = posts
+    .filter((p) => p.author === activeBoard && (p.kind === 'topic') && (p.status === 'ready' || (p.status === 'draft' && p.author === currentUser)))
+    .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
 
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-200 flex flex-col">
@@ -2545,6 +2792,25 @@ export default function App() {
               {!isOwn && <p className="text-xs text-neutral-600 mt-0.5">Read-only — you can leave comments below each item</p>}
             </div>
           </div>
+
+          <TopicsRow
+            topics={visibleTopics}
+            currentUser={currentUser}
+            isOwn={isOwn}
+            onCreateTopic={createTopic}
+            onEditField={editField}
+            onMarkReady={markTopicReady}
+            onAddSnippetImages={addSnippetImages}
+            onRemoveSnippetImage={removeSnippetImage}
+            onDelete={archivePost}
+            onToggleTopicReaction={toggleTopicReaction}
+            onAddComment={addComment}
+            onEditComment={editComment}
+            onToggleReaction={toggleReaction}
+            onOpenComments={markSeen}
+            jumpToPostId={jumpToPostId}
+            onJumpHandled={() => setJumpToPostId(null)}
+          />
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-6xl">
             {[
