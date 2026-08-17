@@ -297,16 +297,34 @@ ${NO_CTA_RULE}
 
 ${NO_ARROW_EMOJI_IN_POSTS_RULE}
 
+## TEXT CLEANUP RULES (apply to both the headline and the lead)
+These are mechanical corrections, not style choices — always apply them, they don't count as "rewording":
+- NBSP (non-breaking space) → a regular space.
+- Broken apostrophes from typos (e.g. "she;s", "don;t") → a real apostrophe ("she's", "don't").
+- Double (or more) spaces → a single space.
+- A hyphen or en dash used as a sentence break between words (" - " or " – ") → an em dash (" — "). A repeated dash ("——") → a single em dash.
+- Any curly/smart quote or other quote style (" " „ « ») → a straight double quote ("). A doubled straight quote ("") → a single straight quote (").
+- Punctuation moves INSIDE the closing quote mark: "text". → "text." — this is about where the period/comma sits relative to the quote mark, NOT the quoted words themselves, so it does not conflict with never touching the quoted text (see HEADLINE rule 4 / LEAD rule 2 below).
+- No space directly before a closing quote mark: day. " → day."
+- Add a space after . , : ; ! ? / \\ when one is missing and a letter immediately follows (don't touch cases followed by a digit or another punctuation mark, like decimals, times, or "...").
+- Gibberish (e.g. "kjkk") or non-English words — fix or translate based on context so the sentence reads as intended English.
+- Trim any other redundant/stray whitespace.
+- Never remove an existing comma (including introductory commas), and never remove a "?" or "!" that's inside direct speech/a quote.
+- Preserve the original length and sentence structure, and preserve existing paragraphs/line breaks — do not split or merge sentences, and do not shorten.
+
+## AVOID BANNED WORDS AND CLICKBAIT PATTERNS
+Beyond grammar, also watch for: slurs/offensive language, sexual content terms, self-harm/suicide/eating-disorder terms, graphic violence/weapons terms, and generic clickbait clichés ("the shocking truth", "you won't believe", "what happened next", "doctors don't want you to know", "nobody expected this", "one photo has everyone talking", and similar vague-hype phrasing). If the researcher's draft already contains one of these, that's a real content-policy issue — do not silently launder it by just rewording it into something equally clickbait-y; keep your edit minimal and let the researcher know by leaving the flagged wording recognizable rather than paraphrasing around it, since a separate check will flag it for them to fix themselves.
+
 ## HEADLINE RULES
 1. Write the entire headline in UPPER CASE.
 2. Fix grammar, spelling, and awkward/non-native phrasing ONLY. Never reword, restructure, or change word choice beyond correcting a genuine error. If nothing is wrong, change nothing.
 3. EXCEPTION to rule 2: the NO_CTA_RULE above is a mandatory content rule, not a style choice — if the researcher's draft contains a call-to-action verb aimed at the reader (see banned list above), remove/rewrite just that word or phrase (minimal fix, keep everything else the researcher wrote) even though this goes beyond a pure grammar fix.
-4. NEVER touch or "fix" any text inside quotation marks — quotes must stay exactly as given, even if imperfect. If the input the researcher wrote contains a provided quote, keep it verbatim.
+4. NEVER touch or "fix" the WORDS inside quotation marks — the quoted text itself must stay exactly as given, even if imperfect. If the input the researcher wrote contains a provided quote, keep its words verbatim (the TEXT CLEANUP RULES above about quote-mark style and punctuation placement still apply — those aren't the quoted words, just the surrounding formatting).
 5. Plain text only — NEVER add bold, yellow, or any other highlighting/markup. Do not wrap any word or phrase in ** or ~~ or any other symbols. If the researcher's draft already has markup in it, strip it out (return plain unstyled text).
 
 ## SOCIAL LEAD RULES
 1. Sentence case overall (proper nouns normal) — EXCEPT 1–3 of the most intriguing words in CAPS. Do not overdo it.
-2. Fix grammar and awkward/non-native phrasing only. Do not restructure or add new claims.
+2. Fix grammar and awkward/non-native phrasing only. Do not restructure or add new claims. Same quoted-words exception as headline rule 4 above.
 3. EXCEPTION: same as the headline exception above — if the researcher's draft lead contains a banned call-to-action verb (see NO_CTA_RULE above), remove/rewrite just that word or phrase even though it goes beyond a pure grammar fix.
 4. EMOJI AFTER EVERY SENTENCE — MANDATORY, NO EXCEPTIONS: every single sentence in the lead ends with one emoji chosen from ${EMOTION_EMOJI_LIST}, immediately after that sentence's punctuation, matching THAT sentence's specific emotion/content — never the same emoji twice in one lead. If the researcher's draft has a sentence with no trailing emoji (this includes the very last sentence), ADD one that fits before returning — this is a content rule, not a style choice, so it overrides "don't restructure" from rule 2. If the draft has an arrow emoji anywhere, remove it (see arrow ban above) and replace with a fitting emoji from the list.
 5. The lead MUST end with exactly one sentence from LEAD_CLOSING_BANK below (pick the category matching whether the payoff is details, photos, video, or general — light adaptation of a bank sentence's wording is fine, inventing a new one is not). This closing sentence is NOT exempt from rule 4 — it always gets its own trailing emoji too, never left bare.
@@ -705,6 +723,95 @@ function stripNameHighlights(text, names) {
     const inner = span.slice(2, -2);
     return namePattern.test(inner) ? inner : span;
   });
+}
+
+// SAFETY NET (mechanical): the FORMAT_PROMPT asks the model to apply these
+// text-cleanup rules, but they're purely mechanical string operations — no
+// judgment needed — so we also apply them deterministically here rather than
+// trusting the model got every one of them right on every generation.
+function sanitizeFormattedText(text) {
+  if (text === null || text === undefined) return text;
+  let t = String(text);
+  t = t.replace(/\u00A0/g, ' ');                          // NBSP -> regular space
+  t = t.replace(/[\u201C\u201D\u201E]/g, '"').replace(/[\u00AB\u00BB]/g, '"');      // curly/other double quotes -> straight
+  t = t.replace(/""+/g, '"');                              // doubled straight quotes -> one
+  t = t.replace(/[\u2018\u2019]/g, "'");                             // curly single quotes -> straight apostrophe
+  t = t.replace(/([A-Za-z]);(s|t|re|ve|ll|d|m)\b/g, "$1'$2"); // "she;s" -> "she's"
+  t = t.replace(/[ \t]{2,}/g, ' ');                         // double+ spaces -> one (keep line breaks intact)
+  t = t.replace(/ [-\u2013] /g, ' \u2014 ');                // " - " / " – " between words -> " — "
+  t = t.replace(/\u2014{2,}/g, '\u2014');                   // repeated em dashes -> one
+  t = t.replace(/([.,:;!?\/\\])(?=[A-Za-z])/g, '$1 ');      // add space after punctuation if a letter follows directly
+  t = t.replace(/\s+"/g, (m, offset, str) => {              // no space directly before a CLOSING quote
+    // Treat as closing only if the quote isn't immediately followed by a letter
+    // (an opening quote is almost always followed by a word character).
+    const after = str[offset + m.length] || '';
+    return /[A-Za-z0-9]/.test(after) ? m : '"';
+  });
+  t = t.replace(/[ \t]+\n/g, '\n').replace(/\n[ \t]+/g, '\n'); // trim spaces around line breaks
+  t = t.replace(/^[ \t]+|[ \t]+$/g, '');                    // trim leading/trailing horizontal whitespace only (keep line breaks)
+  return t;
+}
+
+// Banned-word categories a researcher should never accidentally publish. This
+// list is intentionally broad (offensive language, sexual content, self-harm,
+// violence/weapons, harassment, scams, sensitive medical terms) — flagging is
+// a visual warning for a human to review, not an automatic block, since some
+// legitimate news coverage legitimately needs to reference these topics.
+const BANNED_WORD_LIST = [
+  'fuck', 'fucked', 'fucking', 'shit', 'cunt', 'bitch', 'asshole', 'slutty', 'retarded',
+  'rape', 'porn', 'pornography', 'erotic', 'explicit', 'nsfw', 'nude', 'escort', 'prostitute', 'prostitution', 'stripper', 'fetish', 'kink',
+  'child abuse', 'grooming', 'predator', 'jailbait', 'barely legal',
+  'nazi', 'fascist', 'supremacy', 'white supremacy', 'extremist',
+  'cocaine', 'heroin', 'meth', 'crack', 'weed', 'marijuana', 'drug dealer', 'addict', 'addiction', 'drunk', 'drunken', 'drugs',
+  'suicide', 'self-harm', 'self harm', 'self-injury', 'self injury', 'overdose', 'hanging', 'eating disorder', 'anorexia', 'bulimia',
+  'attack', 'assault', 'blood', 'bloody', 'kill', 'killer', 'murder', 'shoot', 'shooting', 'stab', 'beating', 'punch', 'choke', 'strangle', 'threat', 'threatening', 'gore', 'torture', 'mutilation', 'execution', 'massacre', 'kidnap', 'abduction', 'hostage', 'riot', 'arson',
+  'war', 'invasion', 'weapon', 'gun', 'firearm', 'knife', 'rifle', 'pistol', 'ammunition', 'grenade', 'explosive', 'militia',
+  'aggressive', 'bully', 'bullying', 'harass', 'harassment', 'abuse', 'abusive', 'racism', 'hate', 'hatred', 'idiot', 'dumb', 'stupid', 'psycho',
+  'scam', 'fraud', 'extortion', 'blackmail', 'hoax', 'ponzi scheme', 'money laundering', 'bribery', 'illegal',
+  'abortion', 'amputation', 'miscarriage',
+];
+
+// Generic clickbait clichés — same idea, flag for human review rather than
+// auto-block. Bracket placeholders like [x] / [celebrity] in the phrases the
+// researcher gave become a wildcard match against any short run of words.
+const CLICKBAIT_PHRASE_LIST = [
+  'surprising discovery', 'untold reason', 'what happened next', 'instant karma', 'karma strikes',
+  'the truth revealed', 'discovered the truth', 'old family secret', 'dark family history', 'fans notice one',
+  '"12 days ago he', 'massive surprise', "proof they don't want", 'the most dangerous secret', 'what nobody tells you',
+  "science can't explain", 'you have to see this', 'jaw-dropping secret', "they don't want you to know", 'hidden agenda',
+  'what they found will shock you', 'most unbelievable', "big pharma doesn't tell", 'this will shock you', 'everything you knew was wrong',
+  'the secret to success', 'exposed scam', "you won't believe", "doctors don't want you to know", 'the shocking truth',
+  "click before it's gone", 'results will blow your mind', 'change your life forever', 'must see before deleted', 'heart melts',
+  "wasn't what fans expected", 'fans just noticed one surprising detail', 'shares an unexpected update', 'makes a rare appearance',
+  'the real reason behind', 'finally addresses the rumors', 'nobody expected', 'one photo has everyone talking', "fans can't stop talking about",
+  'leaves fans wondering after unexpected post', 'in an unexpected turn', "that's when everything changed", 'people noticed the same thing',
+  "it didn't take long for fans to react", "here's what really happened", 'no one saw this coming', 'nobody was prepared for',
+  'it caught everyone off guard', 'completely unexpected', 'out of nowhere', '"gross"', '"appalling"',
+];
+
+function containsBannedWords(text) {
+  if (!text) return false;
+  const lower = String(text).toLowerCase();
+  return BANNED_WORD_LIST.some((w) => new RegExp('\\b' + w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i').test(lower));
+}
+
+function containsClickbaitPhrase(text) {
+  if (!text) return false;
+  const lower = String(text).toLowerCase();
+  return CLICKBAIT_PHRASE_LIST.some((p) => lower.includes(p.toLowerCase()));
+}
+
+// Small red warning strip shown above a headline/lead field when either check fires.
+function ContentWarnings({ text }) {
+  const banned = containsBannedWords(text);
+  const clickbait = containsClickbaitPhrase(text);
+  if (!banned && !clickbait) return null;
+  return (
+    <div className="mb-1.5 space-y-0.5">
+      {banned && <p className="text-xs text-rose-400 font-medium">⚠ Banned words detected — change your text</p>}
+      {clickbait && <p className="text-xs text-rose-400 font-medium">⚠ Clickbait detected — change your text</p>}
+    </div>
+  );
 }
 
 // Copy rich text (HTML + plain fallback) to the clipboard. Returns true on success.
@@ -1469,6 +1576,7 @@ function StoryBody({ post, canEdit, copiedHl, onEditField, onTogglePinHeadline, 
       {post.isFormatted && post.formattedCaption && (
         <div className="mb-4 bg-neutral-950 border border-amber-900 rounded-lg p-3">
           <div className="text-xs uppercase tracking-wider text-neutral-600 mb-1">Final story caption</div>
+          <ContentWarnings text={post.formattedCaption} />
           {canEdit ? (
             <AutoTextarea value={stripStoryMarkup(post.formattedCaption || '')} minHeight={52}
               onChange={(e) => onEditField(post.id, 'formattedCaption', e.target.value)}
@@ -1695,6 +1803,7 @@ function PostCard({ post, currentUser, canEdit, onTogglePinHeadline, onTogglePin
               onChange={(e) => onEditField(post.id, 'draftHeadline', e.target.value)}
               placeholder={canEdit ? 'Pin headlines below to collect them here, then rewrite into your final version…' : ''}
               className="w-full bg-neutral-950 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-100 placeholder-neutral-700 outline-none focus:border-amber-500 disabled:opacity-70" />
+            <ContentWarnings text={post.draftHeadline} />
           </div>
           <div>
             <div className="flex items-center justify-between mb-1.5">
@@ -1707,6 +1816,7 @@ function PostCard({ post, currentUser, canEdit, onTogglePinHeadline, onTogglePin
               onChange={(e) => onEditField(post.id, 'draftLead', e.target.value)}
               placeholder={canEdit ? 'Pin leads below to collect them here, then rewrite into your final version…' : ''}
               className="w-full bg-neutral-950 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-100 placeholder-neutral-700 outline-none focus:border-amber-500 disabled:opacity-70" />
+            <ContentWarnings text={post.draftLead} />
           </div>
 
           {/* SNIPPET — post image idea + reference photos */}
@@ -1795,6 +1905,7 @@ function PostCard({ post, currentUser, canEdit, onTogglePinHeadline, onTogglePin
         <div className="space-y-2 pt-1 mb-4">
           <div className="bg-neutral-950 border border-amber-900 rounded-lg p-3">
             <div className="text-xs uppercase tracking-wider text-neutral-600 mb-1">Final headline</div>
+            <ContentWarnings text={post.formattedHeadline} />
             {canEdit ? (
               <AutoTextarea value={stripStoryMarkup(post.formattedHeadline || '')} minHeight={44}
                 onChange={(e) => onEditField(post.id, 'formattedHeadline', e.target.value)}
@@ -1809,6 +1920,7 @@ function PostCard({ post, currentUser, canEdit, onTogglePinHeadline, onTogglePin
           </div>
           <div className="bg-neutral-950 border border-neutral-700 rounded-lg p-3">
             <div className="text-xs uppercase tracking-wider text-neutral-600 mb-1">Final social lead</div>
+            <ContentWarnings text={post.formattedLead} />
             {canEdit ? (
               <AutoTextarea value={stripStoryMarkup(post.formattedLead || '')} minHeight={60}
                 onChange={(e) => onEditField(post.id, 'formattedLead', e.target.value)}
@@ -2566,7 +2678,7 @@ export default function App() {
           }
         );
         persist((prev) => prev.map((p) => p.id === postId ? {
-          ...p, formattedCaption: stripNameHighlights(result.caption, post.namesInInput), isFormatted: true, formatting: false, formatStatus: null,
+          ...p, formattedCaption: stripNameHighlights(sanitizeFormattedText(result.caption), post.namesInInput), isFormatted: true, formatting: false, formatStatus: null,
         } : p));
       } catch (e) {
         persist((prev) => prev.map((p) => p.id === postId ? { ...p, formatting: false, formatStatus: null } : p));
@@ -2594,7 +2706,7 @@ export default function App() {
         }
       );
       persist((prev) => prev.map((p) => p.id === postId ? {
-        ...p, formattedHeadline: stripNameHighlights(result.headline, post.namesInInput), formattedLead: result.lead, isFormatted: true, formatting: false, formatStatus: null,
+        ...p, formattedHeadline: stripNameHighlights(sanitizeFormattedText(result.headline), post.namesInInput), formattedLead: sanitizeFormattedText(result.lead), isFormatted: true, formatting: false, formatStatus: null,
       } : p));
     } catch (e) {
       persist((prev) => prev.map((p) => p.id === postId ? { ...p, formatting: false, formatStatus: null } : p));
