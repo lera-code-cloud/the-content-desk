@@ -86,16 +86,27 @@ This includes the closing pointer to the comments: it ends with an EMOTION_EMOJI
 const LEAD_CLOSING_BANK = `LEAD_CLOSING_BANK — pick ONE sentence from the category matching this lead's actual payoff, then rotate constantly (never repeat the same one across the angles for one post):
 
 DETAILS / NEW INFORMATION (the payoff is a fact, quote, or update — not a photo or video):
-Here's what we know so far. · This is what we know so far. · More details have emerged. · New details have come to light. · The latest details have now emerged. · There's more to the story. · The story is still unfolding. · More information is coming to light. · But there's more to the story. · And that's not the whole story. · But that wasn't the end of it. · But one detail stands out. · One detail, however, changes the picture. · What followed was unexpected. · The situation soon took another turn. · Now, there's a new update. · Since then, things have changed. · Now, new information has emerged. · The situation has since developed. · There's now more to the story. · A new development has changed the picture. · New details are now coming to light. · It's a moment few expected. · The news has left many stunned. · It's a development no one saw coming. · The full picture is starting to emerge. · There's now a clearer picture of what happened. · What emerged paints a different picture. · A closer look reveals even more. · One detail is particularly hard to miss. · What emerged tells a story of its own. · The details speak volumes.
+Here's what we know so far. · More details have emerged. · There's more to the story. · But one detail stands out. · The situation soon took another turn. · Since then, things have changed. · A new development has changed the picture. · It's a development no one saw coming. · The full picture is starting to emerge. · The details speak volumes.
 
 PHOTOS (the payoff is a photo/photos):
-The photos tell the rest of the story. · The photos speak for themselves. · The pictures say it all. · The images reveal even more. · The photos capture it all. · One photo says more than words could. · The images offer a closer look. · The photos reveal a different side of the story. · The moment was captured in photos. · And there are photos to prove it. · The pictures leave little to the imagination. · The photos have since surfaced. · New photos have now emerged. · The images quickly caught attention. · One particular photo stands out. · The photos offer a glimpse into what happened. · The photos capture a telling moment. · The pictures reveal more than expected. · The images paint a clearer picture. · The photos add another piece to the story. · The pictures show just how much has changed. · The images shed new light on the story. · The photos captured every detail. · The pictures give a rare glimpse of the moment. · The photos show a side rarely seen. · The images reveal a lot without saying a word. · The pictures tell a story of their own. · The photos put everything into perspective. · The images captured a moment worth remembering. · A series of photos captured the moment. · The latest photos have drawn attention. · A newly surfaced photo adds another detail. · The photos have become part of the story. · One image has everyone talking. · One snapshot tells quite a story. · The photos say it all. · The images tell the story. · One image says it all. · The images reveal more. · The pictures tell the rest. · The images speak volumes.
+The photos tell the rest of the story. · One photo says more than words could. · The photos have since surfaced. · New photos have now emerged. · The pictures reveal more than expected. · The photos add another piece to the story. · The pictures show just how much has changed. · A newly surfaced photo adds another detail. · One image has everyone talking. · The images speak volumes.
 
 VIDEO / FOOTAGE (the payoff is video/footage):
-The moment was caught on camera. · The whole thing was captured on video. · The footage tells the story. · The video speaks for itself. · The footage reveals what happened next. · The moment was captured on film. · There's footage of the moment. · The footage has since surfaced. · The video shows a different side of the story. · One moment on camera stands out. · The footage quickly caught attention. · And the cameras were rolling. · What happened was caught on camera. · The camera captured every second. · The footage captures the moment as it happened. · The video offers a closer glimpse. · The footage adds another layer to the story. · The camera caught what happened next. · The moment unfolded on camera. · The footage captures an unexpected moment. · The video reveals more than words can describe. · The footage paints a clearer picture. · The cameras happened to capture it all. · The entire moment played out on camera. · The footage shows exactly how it unfolded. · A camera was there to capture the moment. · The video has since drawn plenty of attention. · The footage has people talking. · One moment in the video stands out. · The clip captures a moment few expected. · The footage offers a rare glimpse. · The camera didn't miss a thing. · What the camera captured tells its own story. · The footage says it all. · The camera caught it all. · It was caught on camera. · The camera tells the rest. · The footage reveals more.
+The moment was caught on camera. · The footage tells the story. · There's footage of the moment. · The footage has since surfaced. · One moment on camera stands out. · The video offers a closer glimpse. · The footage adds another layer to the story. · The video reveals more than words can describe. · The clip captures a moment few expected. · The footage reveals more.
 
 GENERAL / AMBIGUOUS (works when the payoff is just "a moment", a reaction, or unclear which of the above fits):
-The moment didn't go unnoticed. · It was all captured on camera. · The images tell their own story. · The cameras captured what words couldn't. · There's now a closer look at what happened. · The moment has since surfaced online. · What was captured has people talking. · The images have sparked plenty of reactions. · What emerged afterward added another layer to the story. · The visuals reveal more than expected. · The moment has now been captured for all to see. · There's more to this moment than meets the eye. · One moment in particular stands out. · The moment looks different from up close. · What surfaced afterward added to the story. · What was captured adds a whole new perspective. · The moment speaks for itself. · What happened was impossible to miss. · There's one moment that says it all. · The moment speaks volumes. · The images speak volumes.`;
+The moment didn't go unnoticed. · There's now a closer look at what happened. · What was captured has people talking. · The images have sparked plenty of reactions. · There's more to this moment than meets the eye. · One moment in particular stands out. · What was captured adds a whole new perspective. · The moment speaks for itself. · There's one moment that says it all. · The moment speaks volumes.`;
+
+// A much smaller version for the FORMAT step only. By the time a lead reaches
+// formatting it should already have a bank-sentence closer from generation —
+// this short list only matters for the rare case where the researcher typed
+// a lead from scratch and it still ends with a banned "in the comments"/
+// "below" phrase that needs replacing.
+const LEAD_CLOSING_BANK_SHORT = `LEAD_CLOSING_BANK (short) — only needed if the draft's closer needs replacing:
+DETAILS: Here's what we know so far. · There's more to the story.
+PHOTOS: The photos tell the rest of the story. · New photos have now emerged.
+VIDEO: The moment was caught on camera. · The footage tells the story.
+GENERAL: The moment speaks for itself. · There's more to this moment than meets the eye.`;
 
 const NEWS_PROMPT = `## NO INTERNET ACCESS
 You cannot browse, fetch, or open URLs. If the input contains a URL, treat the words inside the URL itself (slug, filename, any visible topic words) plus any surrounding text as the ONLY information you have. NEVER say you can't access a link, never explain your limitations, never ask for more information — always produce the JSON output below using whatever text is given, even if it is minimal. This rule overrides every other instinct.
@@ -331,7 +342,7 @@ Beyond grammar, also watch for: slurs/offensive language, sexual content terms, 
 6. EXCEPTION to "don't restructure" (rule 2): if the researcher's draft still ends with "in the comments", "in the comments below", "below" as a location pointer, or "comment below" — this wording is banned, not a style choice. Replace it with a fitting LEAD_CLOSING_BANK sentence (plus its own trailing emoji per rule 4) even though this goes beyond a pure grammar fix.
 7. Keep a question ONLY if it's genuinely relevant; don't add one just to have one. A question still counts as a sentence and still needs its own trailing emoji.
 
-${LEAD_CLOSING_BANK}
+${LEAD_CLOSING_BANK_SHORT}
 
 ## ABSOLUTE RULE
 Never invent facts. Only edit what is given, minimally (aside from the CTA-verb exceptions above).
@@ -544,7 +555,7 @@ async function callClaude(system, userContent, maxTokens = 1500, timeoutMs = 300
   await _acquire();
   let res;
   try {
-    res = await fetchWithRetry({ model, max_tokens: maxTokens, system, messages: [{ role: 'user', content: userContent }] }, timeoutMs, onStatus);
+    res = await fetchWithRetry({ model, max_tokens: maxTokens, system, cache_control: { type: 'ephemeral' }, messages: [{ role: 'user', content: userContent }] }, timeoutMs, onStatus);
   } finally {
     _release();
   }
@@ -2667,7 +2678,7 @@ export default function App() {
       persist((prev) => prev.map((p) => p.id === postId ? { ...p, formatting: true, formatStatus: null, formatStartedAt: new Date().toISOString() } : p));
       try {
         const result = await withAutoRetry(
-          () => callClaude(STORY_FORMAT_PROMPT, `Story caption:\n"${storySource}"`, 500, 30000, 'claude-sonnet-4-6', formatStatusUpdater(postId)),
+          () => callClaude(STORY_FORMAT_PROMPT, `Story caption:\n"${storySource}"`, 500, 30000, 'claude-haiku-4-5-20251001', formatStatusUpdater(postId)),
           {
             maxRetries: 2,
             delays: [5000, 12000],
@@ -2695,7 +2706,7 @@ export default function App() {
     persist((prev) => prev.map((p) => p.id === postId ? { ...p, formatting: true, formatStatus: null, formatStartedAt: new Date().toISOString() } : p));
     try {
       const result = await withAutoRetry(
-        () => callClaude(FORMAT_PROMPT, `Headline: "${headlineSource}"\nLead: "${leadSource}"`, 700, 30000, 'claude-sonnet-4-6', formatStatusUpdater(postId)),
+        () => callClaude(FORMAT_PROMPT, `Headline: "${headlineSource}"\nLead: "${leadSource}"`, 700, 30000, 'claude-haiku-4-5-20251001', formatStatusUpdater(postId)),
         {
           maxRetries: 2,
           delays: [5000, 12000],
