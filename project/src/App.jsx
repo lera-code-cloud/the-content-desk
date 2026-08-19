@@ -1601,12 +1601,6 @@ function StoryBody({ post, canEdit, copiedHl, onEditField, onTogglePinHeadline, 
               className="text-xs border border-neutral-700 rounded px-2.5 py-1 text-neutral-400 hover:border-amber-500 hover:text-amber-300 flex items-center gap-1.5">
               {copiedHl ? <><Check className="w-3.5 h-3.5" /> Copied</> : <><Copy className="w-3.5 h-3.5" /> Copy caption</>}
             </button>
-            {canEdit && post.status === 'active' && (
-              <button onClick={() => onArchive(post.id)}
-                className="text-xs border border-emerald-700 rounded-lg px-3 py-1.5 text-emerald-400 hover:bg-emerald-700 hover:text-neutral-900 flex items-center gap-1.5">
-                <Check className="w-3.5 h-3.5" /> Mark complete & remove
-              </button>
-            )}
           </div>
         </div>
       )}
@@ -1741,8 +1735,14 @@ function PostCard({ post, currentUser, canEdit, onTogglePinHeadline, onTogglePin
   }
 
   return (
-    <div ref={cardRef} className="bg-neutral-900 border border-neutral-800 rounded-2xl p-3 md:p-5 mb-4">
-      <div className="flex items-center justify-between mb-1">
+    <div ref={cardRef} className="relative bg-neutral-900 border border-neutral-800 rounded-2xl p-3 md:p-5 mb-4">
+      {canEdit && (
+        <button onClick={() => onArchive(post.id)} title="Remove from board"
+          className="absolute top-3 right-3 w-6 h-6 rounded-full bg-neutral-800 border border-neutral-700 text-neutral-400 flex items-center justify-center hover:bg-rose-700 hover:border-rose-600 hover:text-white z-10">
+          <XIcon className="w-3.5 h-3.5" />
+        </button>
+      )}
+      <div className="flex items-center justify-between mb-1 pr-8">
         <div className="flex items-center gap-2">
           <Avatar name={post.author} />
           <span className="text-sm text-neutral-300">{post.author}</span>
@@ -1946,12 +1946,6 @@ function PostCard({ post, currentUser, canEdit, onTogglePinHeadline, onTogglePin
           </div>
           {canEdit && (
             <p className="text-xs text-neutral-600">Edited something above? Tap <span className="text-amber-300">Format for publish</span> again to re-clean it up.</p>
-          )}
-          {canEdit && post.status === 'active' && (
-            <button onClick={() => onArchive(post.id)}
-              className="text-xs border border-emerald-700 rounded-lg px-3 py-1.5 text-emerald-400 hover:bg-emerald-700 hover:text-neutral-900 flex items-center gap-1.5">
-              <Check className="w-3.5 h-3.5" /> Mark complete & remove
-            </button>
           )}
         </div>
       )}
