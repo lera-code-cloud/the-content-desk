@@ -3,7 +3,7 @@ import { Bell, BellRing, BellOff, MessageCircle, Copy, Check, ChevronDown, Chevr
 
 /* ============================== CONSTANTS ============================== */
 
-const USERS = ['Darin', 'Alyona', 'Nastya', 'Vika', 'Nazar', 'Tania'];
+const USERS = ['Darin', 'Alyona', 'Nastya', 'Vika', 'Nazar', 'Tania', 'Sofia', 'Tanya'];
 const MANAGER = 'Lera';
 const ALL_USERS = [...USERS, MANAGER];
 const REACTION_EMOJIS = ['👍', '👎', '🤍', '🖤', '🫡'];
@@ -15,6 +15,8 @@ const AVATAR_COLORS = {
   Nastya: '#84B0BA',  // pastel light blue / cyan
   Nazar: '#A390B5',   // pastel purple
   Tania: '#C797A8',   // pastel pink
+  Sofia: '#6EC1B8',   // pastel turquoise
+  Tanya: '#A9CC6E',   // pastel lime green
   Lera: '#9A9A9A',    // pastel gray
 };
 
@@ -42,7 +44,8 @@ const HEADLINE_FORMAT = `## OUTPUT FORMATTING — apply to EVERY headline you re
 
 // Shared quote-usage rule for headlines, story captions, and leads.
 const QUOTE_RULE = `## QUOTES IN THE INPUT (strict)
-If the input contains a quote (text in quotation marks), you MUST reuse it verbatim inside the output — in several of the angles/versions, not just one. Keep quoted text EXACTLY as given (never edit inside quotation marks). If several quotes are provided, spread them across different angles/versions (and, where relevant, some can go in leads rather than headlines), and you may combine more than one quote in a single headline/lead where it fits naturally.`;
+If the input contains a quote (text in quotation marks), you MUST reuse it verbatim inside the output — in several of the angles/versions, not just one. Keep quoted text EXACTLY as given (never edit inside quotation marks). If several quotes are provided, spread them across different angles/versions (and, where relevant, some can go in leads rather than headlines), and you may combine more than one quote in a single headline/lead where it fits naturally.
+LANGUAGE OF QUOTES — STRICT: if a quote in the input is NOT in English (e.g. Spanish, German, or any other language), keep it EXACTLY as given, in that original language — NEVER translate a quote into English, even though the rest of the headline/lead is written in English. This applies no matter how the quote reached you (typed directly, or copied from a non-English source link). Only the surrounding narrative text is in English; the words inside the quotation marks are never touched or translated.`;
 
 // Shared age-usage rule for headlines.
 const AGE_RULE = `## USING AGE (only when it strengthens the hook)
@@ -318,7 +321,7 @@ These are mechanical corrections, not style choices — always apply them, they 
 - Punctuation moves INSIDE the closing quote mark: "text". → "text." — this is about where the period/comma sits relative to the quote mark, NOT the quoted words themselves, so it does not conflict with never touching the quoted text (see HEADLINE rule 4 / LEAD rule 2 below).
 - No space directly before a closing quote mark: day. " → day."
 - Add a space after . , : ; ! ? / \\ when one is missing and a letter immediately follows (don't touch cases followed by a digit or another punctuation mark, like decimals, times, or "...").
-- Gibberish (e.g. "kjkk") or non-English words — fix or translate based on context so the sentence reads as intended English.
+- Gibberish (e.g. "kjkk") or non-English words OUTSIDE quotation marks — fix or translate based on context so the narrative reads as intended English. EXCEPTION: never translate or "fix" words INSIDE quotation marks — see the LANGUAGE OF QUOTES rule (quotes always stay in their original language, even if that's not English).
 - Trim any other redundant/stray whitespace.
 - Never remove an existing comma (including introductory commas), and never remove a "?" or "!" that's inside direct speech/a quote.
 - Preserve the original length and sentence structure, and preserve existing paragraphs/line breaks — do not split or merge sentences, and do not shorten.
