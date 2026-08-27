@@ -1005,12 +1005,12 @@ function LoginScreen({ onSelect }) {
           <p className="text-neutral-500 text-sm mt-1">let's work</p>
         </div>
         <p className="text-neutral-600 text-xs uppercase tracking-widest mb-3 text-center">Who are you?</p>
-        <div className="grid grid-cols-3 gap-3">
+        <div className="flex flex-wrap justify-center gap-3">
           {researchers.map((name) => (
             <button
               key={name}
               onClick={() => onSelect(name)}
-              className="flex flex-col items-center gap-2 bg-neutral-900 border border-neutral-800 rounded-xl py-5 hover:border-amber-600 transition-colors"
+              className="flex flex-col items-center gap-2 bg-neutral-900 border border-neutral-800 rounded-xl py-5 hover:border-amber-600 transition-colors w-[calc(33.333%-0.5rem)] min-w-[5.5rem]"
             >
               <Avatar name={name} size="w-10 h-10 text-sm" />
               <span className="text-neutral-200 text-sm">{name}</span>
