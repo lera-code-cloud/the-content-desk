@@ -351,7 +351,11 @@ ${LEAD_CLOSING_BANK_SHORT}
 Never invent facts. Only edit what is given, minimally (aside from the CTA-verb exceptions above).
 
 ## OUTPUT
-Return ONLY raw JSON: {"headline": "...", "lead": "..."}`;
+Do NOT return JSON — return PLAIN TEXT in exactly this format, with no other text before or after. This matters because the headline or lead may contain a literal quote character, and plain text needs no escaping the way JSON would:
+===HEADLINE===
+<the finished headline, exactly as it should be published, one line>
+===LEAD===
+<the finished lead, exactly as it should be published>`;
 
 /* ---------- STORIES ---------- */
 
@@ -439,7 +443,9 @@ Copy editor finalizing ONE Facebook Story caption exactly as the researcher wrot
 Never invent facts or quotes. Only edit minimally.
 
 ## OUTPUT
-Return ONLY raw JSON: {"caption":"line1\\nline2, plain text with CAPS emphasis only"}`;
+Do NOT return JSON — return PLAIN TEXT in exactly this format, with no other text before or after. This matters because the caption may contain a literal quote character, and plain text needs no escaping the way JSON would. Keep the real line break between the hook and the CTA line:
+===CAPTION===
+<the finished 2-line caption, plain text with CAPS emphasis only>`;
 
 /* ============================== HELPERS ============================== */
 
@@ -553,7 +559,7 @@ async function fetchWithRetry(body, timeoutMs, onStatus) {
   }
 }
 
-async function callClaude(system, userContent, maxTokens = 1500, timeoutMs = 30000, model = 'claude-sonnet-4-6', onStatus = null) {
+async function callClaudeRaw(system, userContent, maxTokens = 1500, timeoutMs = 30000, model = 'claude-sonnet-4-6', onStatus = null) {
   if (_active >= MAX_CONCURRENT && onStatus) onStatus('queued', { position: _queue.length + 1 });
   await _acquire();
   let res;
@@ -565,7 +571,11 @@ async function callClaude(system, userContent, maxTokens = 1500, timeoutMs = 300
   const data = await res.json();
   if (data.error) throw new Error(data.error.message || 'API error');
   const block = (data.content || []).find((b) => b.type === 'text');
-  const text = block?.text || '';
+  return block?.text || '';
+}
+
+async function callClaude(system, userContent, maxTokens = 1500, timeoutMs = 30000, model = 'claude-sonnet-4-6', onStatus = null) {
+  const text = await callClaudeRaw(system, userContent, maxTokens, timeoutMs, model, onStatus);
 
   // Find the JSON object. Prefer a complete {...}, but if the response was cut
   // off (no closing brace), grab from the first { to the end and try to repair.
@@ -586,6 +596,26 @@ async function callClaude(system, userContent, maxTokens = 1500, timeoutMs = 300
     if (repaired) return repaired;
     throw new Error('Response looked cut off and could not be parsed as JSON.');
   }
+}
+
+// Parses a "===MARKER===\ncontent\n===NEXT_MARKER===\ncontent" style plain-text
+// response — used instead of JSON for the format calls specifically, since the
+// headline/lead/caption being formatted often contains a literal quote
+// character (e.g. a direct quote in the headline). Asking the model to escape
+// quotes correctly inside JSON string values is exactly the kind of fiddly
+// task smaller/faster models get wrong; a plain-text response with markers
+// needs no escaping at all, so it can't be corrupted by a stray `"`.
+function parseDelimited(text, markers) {
+  const result = {};
+  for (let i = 0; i < markers.length; i++) {
+    const startIdx = text.indexOf(markers[i]);
+    if (startIdx === -1) continue;
+    const contentStart = startIdx + markers[i].length;
+    const nextIdx = i + 1 < markers.length ? text.indexOf(markers[i + 1], contentStart) : -1;
+    const contentEnd = nextIdx === -1 ? text.length : nextIdx;
+    result[markers[i]] = text.slice(contentStart, contentEnd).trim();
+  }
+  return result;
 }
 
 // Best-effort repair of a truncated JSON object: cut back to the last complete
@@ -2675,7 +2705,13 @@ export default function App() {
       persist((prev) => prev.map((p) => p.id === postId ? { ...p, formatting: true, formatStatus: null, formatStartedAt: new Date().toISOString() } : p));
       try {
         const result = await withAutoRetry(
-          () => callClaude(STORY_FORMAT_PROMPT, `Story caption:\n"${storySource}"`, 500, 30000, 'claude-haiku-4-5-20251001', formatStatusUpdater(postId)),
+          async () => {
+            const text = await callClaudeRaw(STORY_FORMAT_PROMPT, `Story caption:\n"${storySource}"`, 500, 30000, 'claude-haiku-4-5-20251001', formatStatusUpdater(postId));
+            const parsed = parseDelimited(text, ['===CAPTION===']);
+            const caption = parsed['===CAPTION==='];
+            if (!caption) throw new Error('No caption in response' + (text ? ': ' + text.slice(0, 160) : ' (empty response)'));
+            return { caption };
+          },
           {
             maxRetries: 2,
             delays: [5000, 12000],
@@ -2703,7 +2739,14 @@ export default function App() {
     persist((prev) => prev.map((p) => p.id === postId ? { ...p, formatting: true, formatStatus: null, formatStartedAt: new Date().toISOString() } : p));
     try {
       const result = await withAutoRetry(
-        () => callClaude(FORMAT_PROMPT, `Headline: "${headlineSource}"\nLead: "${leadSource}"`, 700, 30000, 'claude-haiku-4-5-20251001', formatStatusUpdater(postId)),
+        async () => {
+          const text = await callClaudeRaw(FORMAT_PROMPT, `Headline: "${headlineSource}"\nLead: "${leadSource}"`, 700, 30000, 'claude-haiku-4-5-20251001', formatStatusUpdater(postId));
+          const parsed = parseDelimited(text, ['===HEADLINE===', '===LEAD===']);
+          const headline = parsed['===HEADLINE==='];
+          const lead = parsed['===LEAD==='];
+          if (!headline || !lead) throw new Error('Missing headline or lead in response' + (text ? ': ' + text.slice(0, 160) : ' (empty response)'));
+          return { headline, lead };
+        },
         {
           maxRetries: 2,
           delays: [5000, 12000],
