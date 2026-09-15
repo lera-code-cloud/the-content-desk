@@ -36,6 +36,30 @@ const PHOTO_ANGLES = [
   { key: 'journey', label: 'Journey', icon: '🌟' },
 ];
 
+// Tanya's board only (German market). Derived from an analysis of 100 top-performing
+// German posts: the winning structures there are different from the US board's, so her
+// board generates against its own angle set and its own prompt.
+const TANYA_ANGLES = [
+  { key: 'quote_detonator', label: 'Quote Detonator', icon: '💬' },
+  { key: 'named_withhold', label: 'Named Withhold', icon: '🔒' },
+  { key: 'small_object', label: 'Small Object', icon: '🔍' },
+  { key: 'timeline_gap', label: 'Timeline Gap', icon: '⏱' },
+  { key: 'crowd_verdict', label: 'Crowd Verdict', icon: '🗣' },
+  { key: 'behavior_mismatch', label: 'Behavior Mismatch', icon: '🌀' },
+];
+
+const TANYA_ANGLE_KEYS = TANYA_ANGLES.map((a) => a.key);
+
+// Old posts (created before this split) have no angleSet, so fall back to the angle
+// keys actually stored on the post — that keeps previously generated cards rendering.
+function anglesForPost(post) {
+  if (post?.angleSet === 'tanya') return TANYA_ANGLES;
+  if (post?.angleSet === 'news') return post?.mode === 'photo' ? PHOTO_ANGLES : NEWS_ANGLES;
+  const keys = Object.keys(post?.angles || {});
+  if (keys.some((k) => TANYA_ANGLE_KEYS.includes(k))) return TANYA_ANGLES;
+  return post?.mode === 'photo' ? PHOTO_ANGLES : NEWS_ANGLES;
+}
+
 // Applied to POST headlines so they arrive already formatted for publishing.
 const HEADLINE_FORMAT = `## OUTPUT FORMATTING — apply to EVERY headline you return
 1. Write the ENTIRE headline in UPPER CASE.
@@ -170,6 +194,79 @@ Scandal/Politics: RAISES MORE QUESTIONS · EVASIVE · CONTROVERSIAL · UNDER FIR
 - Em dash (—) separates fact from twist in ~60% of headlines
 - Curiosity gap: the reader must NOT get the full answer from the headline alone
 - NEVER use "phrase. phrase. phrase." structure
+
+${QUOTE_RULE}
+
+${AGE_RULE}
+
+${NO_CTA_RULE}
+
+${HEADLINE_FORMAT}
+
+## FORBIDDEN WORDS — NEVER USE
+kill/killer · murder · attack · assault · shoot/shooting · stab · blood/gore · torture · weapon · gun · knife · war · racism · nazi · suicide · self-harm · overdose · sex/sexual · nude · porn · rape · underage · minor · drugs · cocaine · heroin · scam · fraud · fuck · shit · bitch · abortion · miscarriage
+
+## FORBIDDEN PATTERNS — NEVER USE
+"turned into a nightmare" · "ended in disaster" · "what happened next will shock you" · "this changes everything" · "the shocking reason behind" · "you won't believe" · "wait until you see" · "heartbreaking betrayal" · "shocking twist" · "jaw-dropping moment" · "fans are furious" · "sparks outrage" · "comment YES if" · "tag someone who" · "share if you agree" · "everyone is talking about"`;
+
+// Tanya's board only — German market. Same hard rules as NEWS_PROMPT (no invented
+// facts, no CTA verbs, quotes verbatim), but a different angle system, a longer
+// headline format, and an extra legal-caution layer for crime/death coverage.
+const TANYA_PROMPT = `## NO INTERNET ACCESS
+You cannot browse, fetch, or open URLs. If the input contains a URL, treat the words inside the URL itself (slug, filename, any visible topic words) plus any surrounding text as the ONLY information you have. NEVER say you can't access a link, never explain your limitations, never ask for more information — always produce the JSON output below using whatever text is given, even if it is minimal. This rule overrides every other instinct.
+
+## ABSOLUTE RULE #1 — ZERO INVENTED FACTS
+This is the most important rule. It overrides everything else.
+- NEVER invent quotes, numbers, timestamps, or details not present in the input.
+- NEVER write "She said...", "He revealed...", "Sources claim..." unless that exact quote/fact was provided.
+- If only a raw headline is given with no sources — work ONLY with the words in that headline.
+- If tempted to add a detail to make the headline stronger — DO NOT. Use a curiosity gap instead.
+- Before writing any headline, ask: "Is every fact, quote and number here present in what I was given?" If NO — remove it or restructure without it.
+
+## ROLE
+You are an expert headline writer for a German-market Facebook news/entertainment page. The audience is Germany, predominantly women 50+, with strong interest in celebrities, TV personalities, human-interest stories, crime, accidents, nostalgia and emotional real-life stories.
+Headlines are written in ENGLISH. Only quoted material stays in its original language. You are NOT translating into German and you are NOT writing German copy — you are writing English headlines that follow the structural patterns proven to perform in the German market.
+These patterns were derived from an analysis of 100 top-performing German posts. They are different from the patterns used on the other boards. Follow the angle definitions below exactly.
+
+## OUTPUT — raw JSON only, no markdown, no explanation, no intro text
+{"names_in_input":["Full Name As A Person Would Write It"],"quote_detonator":["headline string","headline string"],"named_withhold":[...],"small_object":[...],"timeline_gap":[...],"crowd_verdict":[...],"behavior_mismatch":[...]}
+"names_in_input": list every real person's full name mentioned anywhere in the source material (the main subject and anyone else named — partners, family, co-stars), written in normal Title Case (e.g. "Helene Fischer") even though the headlines themselves are ALL CAPS. Empty array if no person is named.
+Return exactly 6 angles, exactly 2 headlines each. Each array item MUST be a plain string — never an object.
+If the source material genuinely cannot support an angle without inventing facts, still return 2 headlines for it built only on what you were given — restructure around the gap rather than filling it.
+
+## ANGLE DEFINITIONS
+QUOTE DETONATOR — Open with a short raw quote in quotation marks, then a colon, then the factual statement. The quote should be conversational and emotionally exposed (roughly 3–8 words), and it does NOT have to come from the main subject — a witness, a relative, a lawyer or the public reacting often hits harder. Only ever use a quote that is actually present in the input, verbatim. If the input contains no quote at all, do not fabricate one: instead build this angle around the most direct piece of reported speech available, or skip the quote-first structure and lead with the sharpest attributed statement.
+NAMED WITHHOLD — Give the full setup, then withhold exactly one thing and NAME what is missing as a concrete noun after an em dash or colon. The withheld item must be a specific object, document, statement, number, answer or location — "her heartbreaking explanation", "what she wrote", "who it belonged to", "the sad reason", "4 photos from the courtroom", "where is he today?". Generic closers ("Details", "What happened?") are permitted, but prefer a sharper named object when the source supports one.
+  SUB-PATTERN (use it for one of this angle's two headlines whenever the source allows): make an impersonal procedure or document the subject of the sentence — the autopsy revealed, the investigation showed, witness testimony exposed, an intercepted phone call disclosed — and withhold the finding itself. Credit the discovery to the process, not to a person. Only use a procedure the source actually says took place.
+SMALL OBJECT — Build the entire hook on one hyper-specific physical detail or exact figure taken from the source: a scrap of fabric, a T-shirt with four words on it, a wristwatch, 70 metres, 8:30 in the morning, "these 5 words". A small domestic object carrying enormous weight is the effect you want. The object must appear in the input.
+TIMELINE GAP — Anchor two points in time and let the reader fall into the gap between them: an ordinary moment, then a stated interval, then the consequence. "The evening before he disappeared ... 24 hours later ...". The intrigue lives in the unexplained interval, not in an adjective.
+CROWD VERDICT — The news is the public's reaction, not the event. Users don't believe the stated cause, fans are stunned by an elimination, viewers threaten a boycott, readers ask "what kind of father behaves like that?". Attribute the reaction to the group that actually voiced it in the source (users, fans, the public, viewers).
+BEHAVIOR MISMATCH — A person behaves in a way that does not fit what the situation demands, and the mismatch itself is the hook: the bereaved father publicly backs the accused, the suspect jokes at the funeral, the mother is absent from the hearing. State the behaviour factually and let the dissonance do the work — never editorialise about what it "proves".
+
+## KEEPING THE ANGLES DISTINCT
+These six must not collapse into each other. Apply these boundaries:
+- SMALL OBJECT takes physical things only — an item, a garment, a scrap, a device, a counted quantity of them. Anything whose hook is a time, a date or an interval belongs to TIMELINE GAP instead, even when it is a precise figure.
+- TIMELINE GAP always needs TWO anchored points and the unexplained span between them. A single timestamp with no second point is not this angle.
+- CROWD VERDICT is about what a group said or did in reaction. BEHAVIOR MISMATCH is about what one named individual did. If the public is reacting to someone's odd behaviour, put the reaction in CROWD VERDICT and the behaviour itself in BEHAVIOR MISMATCH — do not write the same headline twice.
+- NAMED WITHHOLD is the only angle that structurally ends on a named missing item. The other angles may still hold something back, but they should not close on the same "— the reason" shape.
+Across the whole output, no two headlines may lead with the same fact framed the same way. If two angles pull toward the same sentence, change the entry point of one of them.
+
+## STRUCTURAL PATTERNS OF THIS MARKET (follow these)
+1. LENGTH: 15–30 words. Long headlines outperform short ones here. Carry the full setup in the headline — do not tease with a fragment.
+2. RELATIONAL INTRODUCTION: introduce a person through their relationship to someone else when that is how the audience knows them — "the wife of footballer [Name]", "the mother of 8-year-old [Name]", "the widow of [Name] and mother of his two young children". Long appositive phrases are correct here, not a flaw.
+3. CONCRETE OVER EMOTIVE: prefer the named object, the exact time, the counted quantity over an emotional adjective. "A small purple scrap of fabric under his fingernail" beats "a shocking discovery".
+4. EM DASH: use — to separate the setup from the withheld payoff in roughly half the headlines.
+5. QUOTE-FIRST OPENINGS: a leading quote plus colon is the single most common winning structure in this market — use it in QUOTE DETONATOR and, where natural, in one or two other angles.
+6. CURIOSITY GAP: the reader must never get the full answer from the headline alone.
+7. NEVER use a "phrase. phrase. phrase." structure.
+
+## LEGAL CAUTION LAYER (mandatory for crime, accident and death coverage)
+- NEVER call anyone guilty, a perpetrator, or responsible unless the source states they were convicted. Use the status the source gives: accused, charged, suspect, on trial.
+- Abbreviate the surname of an accused or suspect who is not a convicted public figure the way the source does (e.g. "Gina H."). If the source abbreviates, you abbreviate.
+- ATTRIBUTE every allegation, witness claim and family theory to whoever made it. Never state a contested claim in the page's own voice.
+- NEVER state or imply a cause of death, or that a death was a crime, unless the source says authorities confirmed it. If the cause is unconfirmed, build the intrigue around the open question instead.
+- NEVER invent causality between two facts just because the source mentions both.
+- If accounts in the source conflict, reflect that there are conflicting accounts rather than picking one.
 
 ${QUOTE_RULE}
 
@@ -1066,33 +1163,23 @@ function LoginScreen({ onSelect }) {
 
 function NewPostForm({ onCreate, kind = 'post' }) {
   const isStory = kind === 'story';
-  const [mode, setMode] = useState('news');
+  const mode = 'news';
   const [rawInput, setRawInput] = useState('');
   const [intrigue, setIntrigue] = useState('');
-  const [photoCount, setPhotoCount] = useState('');
-  const [photoSubtype, setPhotoSubtype] = useState('transformation');
   const [error, setError] = useState('');
 
   function submit() {
     if (!rawInput.trim()) { setError('Add a headline, article text, URL, or topic first.'); return; }
     setError('');
-    onCreate({ kind, mode, rawInput: rawInput.trim(), intrigue: intrigue.trim(), photoCount: photoCount.trim(), photoSubtype });
+    onCreate({ kind, mode, rawInput: rawInput.trim(), intrigue: intrigue.trim() });
     setRawInput('');
     setIntrigue('');
-    setPhotoCount('');
   }
 
   return (
     <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-3 md:p-5 mb-4">
-      {!isStory && (
-        <div className="flex gap-0 mb-4 border border-neutral-800 rounded-lg overflow-hidden w-fit">
-          <button onClick={() => setMode('news')} className={`px-4 py-2 text-sm ${mode === 'news' ? 'bg-amber-200 text-neutral-900 font-medium' : 'text-neutral-500 hover:bg-neutral-800'}`}>News/Evergreen article</button>
-          <button onClick={() => setMode('photo')} className={`px-4 py-2 text-sm ${mode === 'photo' ? 'bg-amber-200 text-neutral-900 font-medium' : 'text-neutral-500 hover:bg-neutral-800'}`}>Photo article</button>
-        </div>
-      )}
-
       <label className="text-xs uppercase tracking-wider text-neutral-500 mb-2 block">
-        {isStory ? 'Raw draft, link, or topic for the story' : (mode === 'photo' ? 'Person, story or topic for the photo article' : 'Raw headline, article text, URL, or topic')}
+        {isStory ? 'Raw draft, link, or topic for the story' : 'Raw headline, article text, URL, or topic'}
       </label>
       <AutoTextarea
         value={rawInput}
@@ -1110,30 +1197,6 @@ function NewPostForm({ onCreate, kind = 'post' }) {
         placeholder={isStory ? 'The single hook all 5 story versions should revolve around…' : 'The core hook all headlines should build around…'}
         className="w-full bg-neutral-950 border border-neutral-700 rounded-lg px-4 py-3 text-sm text-neutral-100 placeholder-neutral-600 outline-none focus:border-amber-500"
       />
-
-      {!isStory && mode === 'photo' && (
-        <div className="flex gap-3 mt-4 flex-wrap">
-          <div className="flex-1 min-w-40">
-            <label className="text-xs uppercase tracking-wider text-neutral-500 mb-2 block">Photo count</label>
-            <input value={photoCount} onChange={(e) => setPhotoCount(e.target.value)} placeholder="e.g. 30+"
-              className="w-full bg-neutral-950 border border-neutral-700 rounded-lg px-3 py-2.5 text-sm text-neutral-100 placeholder-neutral-600 outline-none focus:border-amber-500" />
-          </div>
-          <div className="flex-1 min-w-40">
-            <label className="text-xs uppercase tracking-wider text-neutral-500 mb-2 block">Subtype</label>
-            <select value={photoSubtype} onChange={(e) => setPhotoSubtype(e.target.value)}
-              className="w-full bg-neutral-950 border border-neutral-700 rounded-lg px-3 py-2.5 text-sm text-neutral-100 outline-none focus:border-amber-500">
-              <option value="transformation">Transformation / look change</option>
-              <option value="family">Family / kids / relationship</option>
-              <option value="love_story">Love story / couple</option>
-              <option value="career">Career journey / rise to fame</option>
-              <option value="outfits">Outfits / red carpet / style</option>
-              <option value="then_now_cast">Then &amp; now / cast reunion</option>
-              <option value="biography">Biography / life story</option>
-              <option value="other">Other</option>
-            </select>
-          </div>
-        </div>
-      )}
 
       {error && <p className="text-rose-400 text-xs mt-3">{error}</p>}
 
@@ -1714,7 +1777,7 @@ function PostCard({ post, currentUser, canEdit, onTogglePinHeadline, onTogglePin
     }
   }, [manualCopy]);
   const [copiedLead, setCopiedLead] = useState(false);
-  const angles = post.mode === 'photo' ? PHOTO_ANGLES : NEWS_ANGLES;
+  const angles = anglesForPost(post);
   const pinnedHeadlines = post.pinnedHeadlines || [];
   const pinnedLeads = post.pinnedLeads || [];
 
@@ -2422,13 +2485,9 @@ export default function App() {
 
   async function runGenerationCore(postId, form) {
     {
-      const prompt = form.mode === 'photo' ? PHOTO_PROMPT : NEWS_PROMPT;
+      const prompt = form.angleSet === 'tanya' ? TANYA_PROMPT : NEWS_PROMPT;
       let msg = `SOURCE MATERIAL (this may be a raw headline, pasted article text, a URL, or just a topic — you have no ability to open links, so work only with the text below, even if it's just a URL):\n\n${form.rawInput}`;
       if (form.intrigue) msg += `\n\n---\nINTRIGUE — build every headline around this hook:\n"${form.intrigue}"`;
-      if (form.mode === 'photo') {
-        const count = form.photoCount || '30+';
-        msg += `\n\nPHOTO ARTICLE PARAMETERS:\n- Photo count: ${count}\n- Subtype: ${form.photoSubtype}\nEvery headline must end with "${count}" plus a fitting descriptor and PHOTOS/PICS.`;
-      }
       const rawAngles = await callClaude(prompt, msg, 6000, 55000, 'claude-sonnet-4-6', statusUpdater(postId, 'headlines'));
 
       // Real person names mentioned in the source material — used below as a
@@ -2565,6 +2624,7 @@ export default function App() {
     const postId = uid();
     const base = {
       id: postId, author: currentUser, kind: form.kind || 'post', rawInput: form.rawInput, intrigue: form.intrigue,
+      angleSet: currentUser === 'Tanya' ? 'tanya' : 'news',
       generating: true, genError: null, genStartedAt: new Date().toISOString(),
       pinnedHeadlines: [], draftHeadline: '', suggestionsCollapsed: false,
       snippetNote: '', snippetImages: [],
@@ -2573,10 +2633,10 @@ export default function App() {
     };
     const placeholder = form.kind === 'story'
       ? { ...base, storyVersions: null, snippetRec: '', formattedCaption: null }
-      : { ...base, mode: form.mode, photoCount: form.photoCount, photoSubtype: form.photoSubtype,
+      : { ...base, mode: form.mode,
           angles: null, leadByAngle: null, pinnedLeads: [], draftLead: '', formattedHeadline: null, formattedLead: null };
     persist((prev) => [placeholder, ...prev]);
-    runGeneration(postId, form);
+    runGeneration(postId, { ...form, angleSet: base.angleSet });
   }
 
   // Topics: a lightweight strip item — text, optional link, optional photos.
@@ -2619,7 +2679,7 @@ export default function App() {
     persist((prev) => prev.map((p) => p.id === postId ? { ...p, generating: true, genError: null } : p));
     runGeneration(postId, {
       kind: post.kind, mode: post.mode, rawInput: post.rawInput, intrigue: post.intrigue,
-      photoCount: post.photoCount, photoSubtype: post.photoSubtype,
+      angleSet: post.angleSet || (post.author === 'Tanya' ? 'tanya' : 'news'),
     });
   }
 
