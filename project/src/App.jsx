@@ -1008,8 +1008,15 @@ async function boardApi(action, payload) {
     try { const j = await res.json(); if (j?.error) msg = j.error; } catch (e) { /* ignore */ }
     throw new Error(msg);
   }
-  return res.json();
+  const data = await res.json();
+  // Our own write already has its result locally — tell the sync layer the new
+  // revision so this tab doesn't download the same post back on the next poll.
+  if (data && data.postId && revAckListener) {
+    try { revAckListener(data.postId, data.deleted ? null : data.rev); } catch (e) { /* ignore */ }
+  }
+  return data;
 }
+let revAckListener = null;
 
 /* ============================== PUSH NOTIFICATIONS ============================== */
 
@@ -2248,42 +2255,115 @@ export default function App() {
     } catch (e) { /* ignore */ }
   }, [activeBoard]);
 
-  const refresh = useCallback(async () => {
-    try {
-      const { posts: postsById, lastSeen: lastSeenByUser } = await boardApi('getAll', {});
-      const remotePosts = Object.values(postsById || {});
-      setPosts((local) => {
-        const remoteIds = new Set(remotePosts.map((rp) => rp.id));
-        const merged = remotePosts.map((rp) => {
-          const lp = local.find((p) => p.id === rp.id);
-          // Keep the local copy ONLY if it has unsaved edits, or THIS tab is the
-          // one actually running generation/formatting for it right now — never
-          // just because the post's data happens to say generating/formatting
-          // (that could be a snapshot from someone else's in-progress work).
-          if (lp && (dirtyRef.current.has(rp.id) || activeGenRef.current.has(rp.id) || activeFormatRef.current.has(rp.id))) {
-            return lp;
-          }
-          return rp;
-        });
-        // Keep local-only posts that haven't reached the backend yet
-        // (e.g. a placeholder mid-generation started on this tab).
-        const localOnly = local.filter((p) => !remoteIds.has(p.id));
-        return [...localOnly, ...merged].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  // ---- Sync with the shared board (bandwidth-friendly) ----
+  // First open: one full load. After that each poll asks only for two tiny
+  // counters; posts are downloaded ONLY when they actually changed, and only
+  // the changed ones. Polling pauses while the tab is hidden.
+  const POLL_MS = 15000;
+  const knownRevsRef = useRef({});   // postId -> rev we currently hold
+  const versionRef = useRef(null);   // board:ver we're in sync with (null = need full load)
+  const lsVersionRef = useRef(null); // board:lsver we're in sync with
+  const syncingRef = useRef(false);
+
+  useEffect(() => {
+    revAckListener = (postId, rev) => {
+      if (rev) knownRevsRef.current = { ...knownRevsRef.current, [postId]: rev };
+      else { const n = { ...knownRevsRef.current }; delete n[postId]; knownRevsRef.current = n; }
+    };
+    return () => { revAckListener = null; };
+  }, []);
+
+  const isLocked = (id) => dirtyRef.current.has(id) || activeGenRef.current.has(id) || activeFormatRef.current.has(id);
+
+  const fullLoad = useCallback(async () => {
+    const { posts: postsById, lastSeen: lastSeenByUser, revs, v, lsv } = await boardApi('getAll', {});
+    const remotePosts = Object.values(postsById || {}).filter(Boolean);
+    setPosts((local) => {
+      const remoteIds = new Set(remotePosts.map((rp) => rp.id));
+      const merged = remotePosts.map((rp) => {
+        const lp = local.find((p) => p.id === rp.id);
+        // Keep the local copy ONLY if it has unsaved edits, or THIS tab is the
+        // one actually running generation/formatting for it right now.
+        if (lp && isLocked(rp.id)) return lp;
+        return rp;
       });
-      if (lastSeenByUser) setLastSeen(lastSeenByUser);
+      // Keep local-only posts that haven't reached the backend yet.
+      const localOnly = local.filter((p) => !remoteIds.has(p.id));
+      return [...localOnly, ...merged].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    });
+    if (lastSeenByUser) setLastSeen(lastSeenByUser);
+    knownRevsRef.current = revs || {};
+    versionRef.current = v;
+    lsVersionRef.current = lsv;
+  }, []);
+
+  const refresh = useCallback(async () => {
+    if (syncingRef.current) return;
+    syncingRef.current = true;
+    try {
+      if (versionRef.current === null) { await fullLoad(); return; }
+
+      const { v, lsv } = await boardApi('getVersion', {});
+
+      if (lsv !== lsVersionRef.current) {
+        const { lastSeen: lastSeenByUser, lsv: lsv2 } = await boardApi('getLastSeen', {});
+        if (lastSeenByUser) setLastSeen(lastSeenByUser);
+        lsVersionRef.current = lsv2;
+      }
+
+      if (v === versionRef.current) return; // nothing changed on the board
+
+      const { revs, v: v2 } = await boardApi('getRevs', {});
+      const known = knownRevsRef.current;
+      const changedIds = Object.keys(revs).filter((id) => known[id] !== revs[id] && !isLocked(id));
+      const deletedIds = Object.keys(known).filter((id) => !(id in revs));
+      const fetched = changedIds.length ? ((await boardApi('getPosts', { ids: changedIds })).posts || {}) : {};
+
+      const nextKnown = { ...known };
+      const updates = {};
+      changedIds.forEach((id) => {
+        if (fetched[id]) { updates[id] = fetched[id]; nextKnown[id] = revs[id]; }
+        else { deletedIds.push(id); }
+      });
+      deletedIds.forEach((id) => { delete nextKnown[id]; });
+      const deleted = new Set(deletedIds.filter((id) => !isLocked(id)));
+
+      if (changedIds.length || deleted.size) {
+        setPosts((local) => {
+          const localIds = new Set(local.map((p) => p.id));
+          const next = local
+            .filter((p) => !deleted.has(p.id))
+            .map((p) => (updates[p.id] && !isLocked(p.id) ? updates[p.id] : p));
+          Object.values(updates).forEach((rp) => { if (!localIds.has(rp.id)) next.push(rp); });
+          return next.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+        });
+      }
+      knownRevsRef.current = nextKnown;
+      versionRef.current = v2;
     } catch (e) {
       // Transient network hiccup — keep whatever we have locally and just try again
       // on the next poll tick rather than wiping the board.
       console.error('refresh failed', e);
+    } finally {
+      syncingRef.current = false;
     }
-  }, []);
+  }, [fullLoad]);
 
   useEffect(() => {
     if (!currentUser) return;
     if (!loadedRef.current) { loadedRef.current = true; refresh(); }
     setActiveBoard((b) => b || (USERS.includes(currentUser) ? currentUser : USERS[0]));
-    const interval = setInterval(refresh, 4000);
-    return () => clearInterval(interval);
+    const visible = () => document.visibilityState === 'visible';
+    const interval = setInterval(() => { if (visible()) refresh(); }, POLL_MS);
+    // Coming back to the tab → sync immediately instead of waiting for the next tick.
+    const onWake = () => { if (visible()) refresh(); };
+    document.addEventListener('visibilitychange', onWake);
+    window.addEventListener('focus', onWake);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', onWake);
+      window.removeEventListener('focus', onWake);
+    };
   }, [currentUser, refresh]);
 
   useEffect(() => {
@@ -2433,6 +2513,7 @@ export default function App() {
     if (!window.confirm('Delete ALL posts and stories for everyone — active and archived? This cannot be undone.')) return;
     setPosts([]);
     setLastSeen({});
+    knownRevsRef.current = {};
     boardApi('clearAll', {}).catch((e) => console.error('Failed to clear board', e));
     showToast('All posts cleared ✓');
   }
