@@ -74,13 +74,47 @@ const K_REVS = 'board:revs';
 const K_VER = 'board:ver';
 const K_LSVER = 'board:lsver';
 const K_LASTSEEN = 'board:lastseen';
+const K_FREACT = 'board:fieldreactions'; // hash postId -> JSON fieldReactions
+
+// Field reactions (headline / lead / snippet). Keep in sync with App.jsx.
+// One thumb + one score per person per field; same emoji again = remove,
+// another emoji from the same group = replace.
+const FIELD_REACTION_FIELDS = ['headline', 'lead', 'snippet'];
+const FIELD_THUMBS = ['👍', '👎'];
+const FIELD_SCORES = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣'];
+function applyFieldReaction(fieldReactions, field, user, emoji) {
+  const all = { ...(fieldReactions || {}) };
+  const forField = { ...(all[field] || {}) };
+  const group = FIELD_THUMBS.includes(emoji) ? FIELD_THUMBS : FIELD_SCORES;
+  const mine = forField[user] || [];
+  const had = mine.includes(emoji);
+  const next = mine.filter((e) => !group.includes(e));
+  if (!had) next.push(emoji);
+  if (next.length) forField[user] = next; else delete forField[user];
+  all[field] = forField;
+  return all;
+}
+
+// Posts read straight from K_POSTS don't carry fieldReactions — add them back
+// before sending a post to the client, so replacing the local copy with the
+// server's doesn't make the reactions blink out.
+async function attachFieldReactions(post) {
+  if (!post || !post.id) return post;
+  const raw = await redis(['HGET', K_FREACT, post.id]);
+  post.fieldReactions = raw ? safeParse(raw, {}) : {};
+  return post;
+}
 
 function newRev() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
 
 async function writePost(post) {
   const rev = newRev();
+  // fieldReactions live in their own small hash (K_FREACT) and are only changed
+  // by toggleFieldReaction — so a full-post save from the author's browser
+  // (possibly holding a stale copy) can never wipe a reviewer's 👍 / score.
+  const { fieldReactions, ...rest } = post;
   await redisTx([
-    ['HSET', K_POSTS, post.id, JSON.stringify(post)],
+    ['HSET', K_POSTS, post.id, JSON.stringify(rest)],
     ['HSET', K_REVS, post.id, rev],
     ['INCR', K_VER],
   ]);
@@ -124,9 +158,13 @@ export default async function handler(req, res) {
     if (action === 'getPosts') {
       const { ids } = req.body || {};
       if (!Array.isArray(ids) || !ids.length) { res.status(200).json({ posts: {} }); return; }
-      const raw = await redis(['HMGET', K_POSTS, ...ids]);
+      const [raw, fr] = await redisTx([['HMGET', K_POSTS, ...ids], ['HMGET', K_FREACT, ...ids]]);
       const posts = {};
-      ids.forEach((id, i) => { posts[id] = raw && raw[i] ? safeParse(raw[i], null) : null; });
+      ids.forEach((id, i) => {
+        const p = raw && raw[i] ? safeParse(raw[i], null) : null;
+        if (p) p.fieldReactions = fr && fr[i] ? safeParse(fr[i], {}) : {};
+        posts[id] = p;
+      });
       res.status(200).json({ posts });
       return;
     }
@@ -139,14 +177,17 @@ export default async function handler(req, res) {
 
     // Full load — only on first open of the app (or if the client lost track).
     if (action === 'getAll') {
-      const [v, lsv, postsFlat, lastSeenFlat, revsFlat] = await redisTx([
+      const [v, lsv, postsFlat, lastSeenFlat, revsFlat, frFlat] = await redisTx([
         ['GET', K_VER],
         ['GET', K_LSVER],
         ['HGETALL', K_POSTS],
         ['HGETALL', K_LASTSEEN],
         ['HGETALL', K_REVS],
+        ['HGETALL', K_FREACT],
       ]);
       const posts = flatToObj(postsFlat, true);
+      const fieldReactions = flatToObj(frFlat, true);
+      Object.keys(posts).forEach((id) => { if (posts[id]) posts[id].fieldReactions = fieldReactions[id] || {}; });
       const lastSeen = flatToObj(lastSeenFlat, true);
       const revs = flatToObj(revsFlat, false);
       // One-time migration: posts saved before this version have no rev yet.
@@ -174,6 +215,7 @@ export default async function handler(req, res) {
       await redisTx([
         ['HDEL', K_POSTS, postId],
         ['HDEL', K_REVS, postId],
+        ['HDEL', K_FREACT, postId],
         ['INCR', K_VER],
       ]);
       res.status(200).json({ ok: true, postId, deleted: true });
@@ -206,6 +248,7 @@ export default async function handler(req, res) {
         }).catch((e) => console.error('push failed for', name, e.message));
       }));
 
+      await attachFieldReactions(post);
       res.status(200).json({ post, postId, rev });
       return;
     }
@@ -225,6 +268,7 @@ export default async function handler(req, res) {
       if (comment.reactions[user] === emoji) delete comment.reactions[user];
       else comment.reactions[user] = emoji;
       const rev = await writePost(post);
+      await attachFieldReactions(post);
       res.status(200).json({ post, postId, rev });
       return;
     }
@@ -241,7 +285,27 @@ export default async function handler(req, res) {
       if (post.reactions[user] === emoji) delete post.reactions[user];
       else post.reactions[user] = emoji;
       const rev = await writePost(post);
+      await attachFieldReactions(post);
       res.status(200).json({ post, postId, rev });
+      return;
+    }
+
+    if (action === 'toggleFieldReaction') {
+      const { postId, field, user, emoji } = req.body || {};
+      if (!postId || !field || !user || !emoji) { res.status(400).json({ error: 'Missing postId/field/user/emoji' }); return; }
+      if (!FIELD_REACTION_FIELDS.includes(field)) { res.status(400).json({ error: 'Unknown field: ' + field }); return; }
+      if (![...FIELD_THUMBS, ...FIELD_SCORES].includes(emoji)) { res.status(400).json({ error: 'Unsupported emoji' }); return; }
+      const [exists, frRaw] = await redisTx([['HEXISTS', K_POSTS, postId], ['HGET', K_FREACT, postId]]);
+      if (!exists) { res.status(404).json({ error: 'Post not found' }); return; }
+      const fieldReactions = applyFieldReaction(frRaw ? safeParse(frRaw, {}) : {}, field, user, emoji);
+      // Bump the post's rev too, so other open tabs pick the change up on their next poll.
+      const rev = newRev();
+      await redisTx([
+        ['HSET', K_FREACT, postId, JSON.stringify(fieldReactions)],
+        ['HSET', K_REVS, postId, rev],
+        ['INCR', K_VER],
+      ]);
+      res.status(200).json({ post: { id: postId, fieldReactions }, postId, rev });
       return;
     }
 
@@ -258,6 +322,7 @@ export default async function handler(req, res) {
       comment.mentions = Array.isArray(mentions) ? mentions : [];
       comment.editedAt = new Date().toISOString();
       const rev = await writePost(post);
+      await attachFieldReactions(post);
       res.status(200).json({ post, postId, rev });
       return;
     }
@@ -277,6 +342,7 @@ export default async function handler(req, res) {
       await redisTx([
         ['DEL', K_POSTS],
         ['DEL', K_REVS],
+        ['DEL', K_FREACT],
         ['DEL', K_LASTSEEN],
         ['INCR', K_VER],
         ['INCR', K_LSVER],

@@ -1285,6 +1285,23 @@ function CommentBox({ onSubmit }) {
   );
 }
 
+// "Who reacted with what" — e.g. "Alyona 👎 2️⃣ · Nastya 👍". Accepts both
+// shapes used in the app: { user: '👍' } (comments, topics) and
+// { user: ['👍', '4️⃣'] } (field reactions). Your own name is a bit brighter.
+function ReactorsLine({ reactions, currentUser, className = '' }) {
+  const entries = Object.entries(reactions || {})
+    .map(([u, v]) => [u, Array.isArray(v) ? v : (v ? [v] : [])])
+    .filter(([, list]) => list.length);
+  if (!entries.length) return null;
+  return (
+    <div className={"text-[11px] text-neutral-600 leading-relaxed " + className}>
+      {entries.map(([u, list], i) => (
+        <span key={u}>{i > 0 && ' · '}<span className={u === currentUser ? 'text-neutral-400' : ''}>{u}</span> {list.join(' ')}</span>
+      ))}
+    </div>
+  );
+}
+
 function CommentThread({ post, currentUser, onAddComment, onEditComment, onToggleReaction, onOpen, forceOpen }) {
   const [open, setOpen] = useState(false);
   const [pickerOpenFor, setPickerOpenFor] = useState(null);
@@ -1361,8 +1378,9 @@ function CommentThread({ post, currentUser, onAddComment, onEditComment, onToggl
                       {usedEmojis.map((emoji) => {
                         const count = Object.values(c.reactions || {}).filter((r) => r === emoji).length;
                         const mine = (c.reactions || {})[currentUser] === emoji;
+                        const who = Object.keys(c.reactions || {}).filter((u) => c.reactions[u] === emoji).join(', ');
                         return (
-                          <button key={emoji} onClick={() => onToggleReaction(post.id, c.id, emoji)}
+                          <button key={emoji} title={who} onClick={() => onToggleReaction(post.id, c.id, emoji)}
                             className={`text-xs rounded-full px-1.5 py-0.5 border leading-none flex items-center gap-0.5 ${mine ? 'border-amber-500 bg-amber-500/10' : 'border-neutral-800 hover:border-neutral-600'}`}>
                             <span>{emoji}</span><span className={mine ? 'text-amber-300' : 'text-neutral-500'}>{count}</span>
                           </button>
@@ -1383,6 +1401,7 @@ function CommentThread({ post, currentUser, onAddComment, onEditComment, onToggl
                       )}
                     </div>
                     )}
+                    {!isEditing && <ReactorsLine reactions={c.reactions} currentUser={currentUser} className="mt-1" />}
                   </div>
                 </div>
               );
@@ -1430,7 +1449,7 @@ function TopicCompactCard({ topic, currentUser, canEdit, onOpen, onDelete }) {
   );
 }
 
-function TopicModal({ topic, currentUser, canEdit, onClose, onEditField, onMarkReady, onAddSnippetImages, onRemoveSnippetImage, onDelete, onToggleTopicReaction, onAddComment, onEditComment, onToggleReaction, onOpenComments }) {
+function TopicModal({ topic, currentUser, canEdit, onClose, onEditField, onMarkReady, onAddSnippetImages, onRemoveSnippetImage, onReorderSnippetImages, onDelete, onToggleTopicReaction, onAddComment, onEditComment, onToggleReaction, onOpenComments }) {
   const [uploadingSnippet, setUploadingSnippet] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [lightbox, setLightbox] = useState(null);
@@ -1480,16 +1499,9 @@ function TopicModal({ topic, currentUser, canEdit, onClose, onEditField, onMarkR
               onDragLeave={(e) => { e.preventDefault(); setDragOver(false); }}
               onDrop={async (e) => { e.preventDefault(); setDragOver(false); const files = e.dataTransfer.files; if (!files || !files.length) return; setUploadingSnippet(true); await onAddSnippetImages(topic.id, files); setUploadingSnippet(false); }}
               className={"rounded-lg border border-dashed transition-colors p-3 " + (dragOver ? "border-amber-500 bg-amber-500/10" : "border-neutral-700")}>
-              {(topic.snippetImages && topic.snippetImages.length > 0) && (
-                <div className="flex flex-wrap gap-2 mb-2.5">
-                  {topic.snippetImages.map((src, i) => (
-                    <div key={i} className="relative">
-                      <img src={src} alt="" onClick={() => setLightbox(src)} className="w-20 h-20 object-cover rounded-lg border border-neutral-700 cursor-zoom-in" />
-                      <button onClick={() => onRemoveSnippetImage(topic.id, i)} className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-neutral-800 border border-neutral-600 text-neutral-300 text-xs flex items-center justify-center hover:bg-rose-700 hover:border-rose-600 hover:text-white">✕</button>
-                    </div>
-                  ))}
-                </div>
-              )}
+              <SnippetImageGrid images={topic.snippetImages} canEdit size="w-20 h-20" className="mb-2.5"
+                onOpen={setLightbox} onRemove={(i) => onRemoveSnippetImage(topic.id, i)}
+                onReorder={(order) => onReorderSnippetImages(topic.id, order)} />
               <div className="flex items-center gap-3 flex-wrap">
                 <span className="text-xs text-neutral-500">{uploadingSnippet ? <><Dots /> Adding…</> : (dragOver ? 'Drop photos here' : 'Drag photos here, or')}</span>
                 {!uploadingSnippet && (
@@ -1502,13 +1514,7 @@ function TopicModal({ topic, currentUser, canEdit, onClose, onEditField, onMarkR
               </div>
             </div>
           ) : (
-            (topic.snippetImages && topic.snippetImages.length > 0) && (
-              <div className="flex flex-wrap gap-2">
-                {topic.snippetImages.map((src, i) => (
-                  <img key={i} src={src} alt="" onClick={() => setLightbox(src)} className="w-20 h-20 object-cover rounded-lg border border-neutral-700 cursor-zoom-in" />
-                ))}
-              </div>
-            )
+            <SnippetImageGrid images={topic.snippetImages} canEdit={false} size="w-20 h-20" onOpen={setLightbox} />
           )}
         </div>
 
@@ -1520,11 +1526,11 @@ function TopicModal({ topic, currentUser, canEdit, onClose, onEditField, onMarkR
         )}
 
         <div className="flex items-center gap-2 mt-4 pt-3 border-t border-neutral-800">
-          <button onClick={() => onToggleTopicReaction(topic.id, '👍')}
+          <button title={Object.keys(topic.reactions || {}).filter((u) => topic.reactions[u] === '👍').join(', ')} onClick={() => onToggleTopicReaction(topic.id, '👍')}
             className={`text-sm rounded-full px-3 py-1 border flex items-center gap-1 ${myReaction === '👍' ? 'border-amber-500 bg-amber-500/10 text-amber-300' : 'border-neutral-700 text-neutral-400 hover:border-neutral-500'}`}>
             👍 {thumbsUp}
           </button>
-          <button onClick={() => onToggleTopicReaction(topic.id, '👎')}
+          <button title={Object.keys(topic.reactions || {}).filter((u) => topic.reactions[u] === '👎').join(', ')} onClick={() => onToggleTopicReaction(topic.id, '👎')}
             className={`text-sm rounded-full px-3 py-1 border flex items-center gap-1 ${myReaction === '👎' ? 'border-amber-500 bg-amber-500/10 text-amber-300' : 'border-neutral-700 text-neutral-400 hover:border-neutral-500'}`}>
             👎 {thumbsDown}
           </button>
@@ -1533,6 +1539,7 @@ function TopicModal({ topic, currentUser, canEdit, onClose, onEditField, onMarkR
               className="ml-auto text-xs text-neutral-600 hover:text-rose-400">Delete topic</button>
           )}
         </div>
+        <ReactorsLine reactions={topic.reactions} currentUser={currentUser} className="mt-1.5" />
 
         <CommentThread post={topic} currentUser={currentUser} onAddComment={onAddComment} onEditComment={onEditComment} onToggleReaction={onToggleReaction} onOpen={onOpenComments} forceOpen={true} />
       </div>
@@ -1547,7 +1554,7 @@ function TopicModal({ topic, currentUser, canEdit, onClose, onEditField, onMarkR
   );
 }
 
-function TopicsRow({ topics, currentUser, isOwn, onCreateTopic, onEditField, onMarkReady, onAddSnippetImages, onRemoveSnippetImage, onDelete, onToggleTopicReaction, onAddComment, onEditComment, onToggleReaction, onOpenComments, jumpToPostId, onJumpHandled }) {
+function TopicsRow({ topics, currentUser, isOwn, onCreateTopic, onEditField, onMarkReady, onAddSnippetImages, onRemoveSnippetImage, onReorderSnippetImages, onDelete, onToggleTopicReaction, onAddComment, onEditComment, onToggleReaction, onOpenComments, jumpToPostId, onJumpHandled }) {
   const [openTopicId, setOpenTopicId] = useState(null);
   const openTopic = topics.find((t) => t.id === openTopicId);
 
@@ -1590,6 +1597,7 @@ function TopicsRow({ topics, currentUser, isOwn, onCreateTopic, onEditField, onM
           onMarkReady={onMarkReady}
           onAddSnippetImages={onAddSnippetImages}
           onRemoveSnippetImage={onRemoveSnippetImage}
+          onReorderSnippetImages={onReorderSnippetImages}
           onDelete={onDelete}
           onToggleTopicReaction={onToggleTopicReaction}
           onAddComment={onAddComment}
@@ -1602,9 +1610,197 @@ function TopicsRow({ topics, currentUser, isOwn, onCreateTopic, onEditField, onM
   );
 }
 
+/* ============================ FIELD REACTIONS ============================ */
+// Reviewer feedback on a single working field (headline / social lead / snippet).
+// Stored as post.fieldReactions[field][user] = ['👍', '4️⃣'] — each person can
+// hold at most ONE thumb and ONE score per field: picking another in the same
+// group replaces it, tapping your current pick removes it.
+const FIELD_THUMBS = ['👍', '👎'];
+const FIELD_SCORES = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣'];
+
+function applyFieldReaction(fieldReactions, field, user, emoji) {
+  const all = { ...(fieldReactions || {}) };
+  const forField = { ...(all[field] || {}) };
+  const group = FIELD_THUMBS.includes(emoji) ? FIELD_THUMBS : FIELD_SCORES;
+  const mine = forField[user] || [];
+  const had = mine.includes(emoji);
+  const next = mine.filter((e) => !group.includes(e));
+  if (!had) next.push(emoji);
+  if (next.length) forField[user] = next; else delete forField[user];
+  all[field] = forField;
+  return all;
+}
+
+function FieldReactions({ post, field, currentUser, onToggle }) {
+  const map = (post.fieldReactions || {})[field] || {};
+  const mine = map[currentUser] || [];
+  const usersFor = (emoji) => Object.keys(map).filter((u) => (map[u] || []).includes(emoji));
+
+  const btn = (emoji) => {
+    const users = usersFor(emoji);
+    const isMine = mine.includes(emoji);
+    return (
+      <button key={emoji} type="button" title={users.length ? users.join(', ') : ''}
+        onClick={(e) => { onToggle(post.id, field, emoji); e.currentTarget.blur(); }}
+        className={"text-xs rounded-full px-1.5 py-0.5 border flex items-center gap-1 transition-colors " +
+          (isMine ? "border-amber-500 bg-amber-500/10 text-amber-300"
+            : users.length ? "border-neutral-700 text-neutral-400 hover:border-neutral-500"
+            : "border-transparent text-neutral-500 opacity-50 hover:opacity-100 hover:border-neutral-700")}>
+        <span>{emoji}</span>
+        {users.length > 0 && <span className="tabular-nums">{users.length}</span>}
+      </button>
+    );
+  };
+
+  return (
+    <div className="mt-1.5">
+      <div className="flex items-center gap-0.5 flex-wrap">
+        {FIELD_THUMBS.map(btn)}
+        <span className="w-px h-4 bg-neutral-800 mx-1.5" />
+        {FIELD_SCORES.map(btn)}
+      </div>
+      <ReactorsLine reactions={map} currentUser={currentUser} className="mt-1" />
+    </div>
+  );
+}
+
+/* ========================== SNIPPET IMAGE GRID ========================== */
+// Thumbnails with drag-to-reorder. Uses pointer events instead of HTML5 drag &
+// drop so it works on phones too: mouse — just drag; touch — press and hold
+// for a moment, then drag (a quick swipe still scrolls the page as usual).
+// The order is previewed live while dragging and saved once on release.
+function SnippetImageGrid({ images, canEdit, size = 'w-24 h-24', className = '', onOpen, onRemove, onReorder }) {
+  const [order, setOrder] = useState(null);      // original indices, only while dragging
+  const [dragIdx, setDragIdx] = useState(null);  // original index being dragged
+  const gridRef = useRef(null);
+  const st = useRef(null);
+  const orderRef = useRef(null);
+  const lastDragEndRef = useRef(0);
+  const list = images || [];
+  const shown = order || list.map((_, i) => i);
+  const canReorder = canEdit && !!onReorder && list.length > 1;
+
+  useEffect(() => () => cleanup(), []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function blockTouchScroll(e) { if (st.current && st.current.active) e.preventDefault(); }
+
+  function cleanup() {
+    const s = st.current;
+    if (!s) return;
+    if (s.timer) clearTimeout(s.timer);
+    const h = s.handlers;
+    window.removeEventListener('pointermove', h.move);
+    window.removeEventListener('pointerup', h.up);
+    window.removeEventListener('pointercancel', h.up);
+    document.removeEventListener('touchmove', h.block);
+    st.current = null;
+  }
+
+  function activate() {
+    const s = st.current;
+    if (!s || s.active) return;
+    s.active = true;
+    const initial = list.map((_, i) => i);
+    orderRef.current = initial;
+    setOrder(initial);
+    setDragIdx(s.idx);
+    if (s.touch && navigator.vibrate) { try { navigator.vibrate(12); } catch (e) { /* ignore */ } }
+  }
+
+  function onMove(e) {
+    const s = st.current;
+    if (!s) return;
+    const dist = Math.hypot(e.clientX - s.x, e.clientY - s.y);
+    if (!s.active) {
+      if (s.touch) { if (dist > 8) cleanup(); }   // finger moved before the hold — it's a scroll
+      else if (dist > 5) activate();
+      return;
+    }
+    const el = document.elementFromPoint(e.clientX, e.clientY);
+    const cell = el && el.closest && el.closest('[data-snip-idx]');
+    if (!cell || !gridRef.current || !gridRef.current.contains(cell)) return;
+    const overIdx = Number(cell.getAttribute('data-snip-idx'));
+    if (overIdx === s.idx) return;
+    const cur = orderRef.current;
+    const from = cur.indexOf(s.idx);
+    const to = cur.indexOf(overIdx);
+    if (from < 0 || to < 0 || from === to) return;
+    const next = cur.slice();
+    next.splice(from, 1);
+    next.splice(to, 0, s.idx);
+    orderRef.current = next;
+    setOrder(next);
+  }
+
+  function onUp() {
+    const s = st.current;
+    const wasActive = s && s.active;
+    const finalOrder = orderRef.current;
+    cleanup();
+    if (!wasActive) return;
+    lastDragEndRef.current = Date.now();
+    setOrder(null);
+    setDragIdx(null);
+    orderRef.current = null;
+    if (finalOrder && finalOrder.some((v, i) => v !== i)) onReorder(finalOrder);
+  }
+
+  function onDown(e, idx) {
+    if (!canReorder) return;
+    if (e.button !== undefined && e.button > 0) return;
+    if (e.target.closest && e.target.closest('button')) return;
+    cleanup();
+    const touch = e.pointerType === 'touch' || e.pointerType === 'pen';
+    // Keep the exact listener references so cleanup removes the same ones even
+    // after re-renders create new function instances.
+    const handlers = { move: onMove, up: onUp, block: blockTouchScroll };
+    st.current = { idx, x: e.clientX, y: e.clientY, touch, active: false, timer: null, handlers };
+    if (touch) {
+      st.current.timer = setTimeout(activate, 280);
+      document.addEventListener('touchmove', handlers.block, { passive: false });
+    }
+    window.addEventListener('pointermove', handlers.move);
+    window.addEventListener('pointerup', handlers.up);
+    window.addEventListener('pointercancel', handlers.up);
+  }
+
+  if (!list.length) return null;
+  return (
+    <div className={className}>
+      <div ref={gridRef} className="flex flex-wrap gap-2">
+        {shown.map((origIdx, pos) => {
+          const src = list[origIdx];
+          const dragging = dragIdx === origIdx;
+          return (
+            <div key={origIdx} data-snip-idx={origIdx}
+              onPointerDown={(e) => onDown(e, origIdx)}
+              onContextMenu={(e) => { if (canReorder) e.preventDefault(); }}
+              style={canReorder ? { WebkitTouchCallout: 'none', WebkitUserSelect: 'none', userSelect: 'none' } : undefined}
+              className={"relative transition-transform " + (dragging ? "scale-105 z-10" : "") + (canReorder ? (dragIdx !== null ? " cursor-grabbing" : " cursor-grab") : "")}>
+              <img src={src} alt={`snippet ${pos + 1}`} draggable={false}
+                onClick={() => { if (Date.now() - lastDragEndRef.current < 350) return; onOpen && onOpen(src); }}
+                className={size + " object-cover rounded-lg border " + (dragging ? "border-amber-500 opacity-70 shadow-lg" : "border-neutral-700") + (canReorder ? "" : " cursor-zoom-in")} />
+              {list.length > 1 && (
+                <span className="absolute bottom-1 left-1 min-w-[18px] h-[18px] px-1 rounded-full bg-neutral-950/80 text-neutral-300 text-[10px] leading-[18px] text-center pointer-events-none tabular-nums">{pos + 1}</span>
+              )}
+              {canEdit && onRemove && dragIdx === null && (
+                <button onClick={() => onRemove(origIdx)} title="Remove"
+                  className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-neutral-800 border border-neutral-600 text-neutral-300 text-xs flex items-center justify-center hover:bg-rose-700 hover:border-rose-600 hover:text-white">✕</button>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      {canReorder && (
+        <p className="text-[11px] text-neutral-600 mt-1.5">Drag to reorder · on phone: press, hold, then drag</p>
+      )}
+    </div>
+  );
+}
+
 /* ============================== POST CARD ============================== */
 
-function StoryBody({ post, canEdit, copiedHl, onEditField, onTogglePinHeadline, onToggleSuggestions, onFormat, onArchive, onCopyCaption, onAddSnippetImages, onRemoveSnippetImage, setLightbox, dragOver, setDragOver, uploadingSnippet, setUploadingSnippet }) {
+function StoryBody({ post, canEdit, copiedHl, onEditField, onTogglePinHeadline, onToggleSuggestions, onFormat, onArchive, onCopyCaption, onAddSnippetImages, onRemoveSnippetImage, onReorderSnippetImages, setLightbox, dragOver, setDragOver, uploadingSnippet, setUploadingSnippet }) {
   const versions = post.storyVersions || {};
   const keys = Object.keys(versions);
   const pinned = post.pinnedHeadlines || [];
@@ -1640,16 +1836,9 @@ function StoryBody({ post, canEdit, copiedHl, onEditField, onTogglePinHeadline, 
                 onDragLeave={(e) => { e.preventDefault(); setDragOver(false); }}
                 onDrop={async (e) => { e.preventDefault(); setDragOver(false); const files = e.dataTransfer.files; if (!files || !files.length) return; setUploadingSnippet(true); await onAddSnippetImages(post.id, files); setUploadingSnippet(false); }}
                 className={"mt-2.5 rounded-lg border border-dashed transition-colors p-3 " + (dragOver ? "border-amber-500 bg-amber-500/10" : "border-neutral-700")}>
-                {(post.snippetImages && post.snippetImages.length > 0) && (
-                  <div className="flex flex-wrap gap-2 mb-2.5">
-                    {post.snippetImages.map((src, i) => (
-                      <div key={i} className="relative">
-                        <img src={src} alt="" onClick={() => setLightbox(src)} className="w-24 h-24 object-cover rounded-lg border border-neutral-700 cursor-zoom-in" />
-                        <button onClick={() => onRemoveSnippetImage(post.id, i)} className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-neutral-800 border border-neutral-600 text-neutral-300 text-xs flex items-center justify-center hover:bg-rose-700 hover:border-rose-600 hover:text-white">✕</button>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                <SnippetImageGrid images={post.snippetImages} canEdit className="mb-2.5"
+                  onOpen={setLightbox} onRemove={(i) => onRemoveSnippetImage(post.id, i)}
+                  onReorder={(order) => onReorderSnippetImages(post.id, order)} />
                 <div className="flex items-center gap-3 flex-wrap">
                   <span className="text-xs text-neutral-500">{uploadingSnippet ? <><Dots /> Adding…</> : (dragOver ? 'Drop photos here' : 'Drag photos here, or')}</span>
                   {!uploadingSnippet && (
@@ -1662,13 +1851,7 @@ function StoryBody({ post, canEdit, copiedHl, onEditField, onTogglePinHeadline, 
                 </div>
               </div>
             ) : (
-              (post.snippetImages && post.snippetImages.length > 0) && (
-                <div className="flex flex-wrap gap-2 mt-2.5">
-                  {post.snippetImages.map((src, i) => (
-                    <img key={i} src={src} alt="" onClick={() => setLightbox(src)} className="w-24 h-24 object-cover rounded-lg border border-neutral-700 cursor-zoom-in" />
-                  ))}
-                </div>
-              )
+              <SnippetImageGrid images={post.snippetImages} canEdit={false} className="mt-2.5" onOpen={setLightbox} />
             )}
           </div>
 
@@ -1750,7 +1933,7 @@ function StoryBody({ post, canEdit, copiedHl, onEditField, onTogglePinHeadline, 
   );
 }
 
-function PostCard({ post, currentUser, canEdit, onTogglePinHeadline, onTogglePinLead, onToggleSuggestions, onEditField, onAddSnippetImages, onRemoveSnippetImage, onFormat, onArchive, onRetry, onAddComment, onEditComment, onToggleReaction, onOpenComments, jumpToPostId, onJumpHandled }) {
+function PostCard({ post, currentUser, canEdit, onTogglePinHeadline, onTogglePinLead, onToggleSuggestions, onEditField, onAddSnippetImages, onRemoveSnippetImage, onReorderSnippetImages, onToggleFieldReaction, onFormat, onArchive, onRetry, onAddComment, onEditComment, onToggleReaction, onOpenComments, jumpToPostId, onJumpHandled }) {
   const [showOriginal, setShowOriginal] = useState(false);
   const [copiedHl, setCopiedHl] = useState(false);
   const [lightbox, setLightbox] = useState(null);
@@ -1895,7 +2078,7 @@ function PostCard({ post, currentUser, canEdit, onTogglePinHeadline, onTogglePin
           onEditField={onEditField} onTogglePinHeadline={onTogglePinHeadline}
           onToggleSuggestions={onToggleSuggestions} onFormat={onFormat} onArchive={onArchive}
           onCopyCaption={copyStoryCaption} onAddSnippetImages={onAddSnippetImages}
-          onRemoveSnippetImage={onRemoveSnippetImage} setLightbox={setLightbox}
+          onRemoveSnippetImage={onRemoveSnippetImage} onReorderSnippetImages={onReorderSnippetImages} setLightbox={setLightbox}
           dragOver={dragOver} setDragOver={setDragOver} uploadingSnippet={uploadingSnippet} setUploadingSnippet={setUploadingSnippet} />
       )}
 
@@ -1918,6 +2101,7 @@ function PostCard({ post, currentUser, canEdit, onTogglePinHeadline, onTogglePin
               placeholder={canEdit ? 'Pin headlines below to collect them here, then rewrite into your final version…' : ''}
               className="w-full bg-neutral-950 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-100 placeholder-neutral-700 outline-none focus:border-amber-500 disabled:opacity-70" />
             <ContentWarnings text={post.draftHeadline} />
+            <FieldReactions post={post} field="headline" currentUser={currentUser} onToggle={onToggleFieldReaction} />
           </div>
           <div>
             <div className="flex items-center justify-between mb-1.5">
@@ -1931,6 +2115,7 @@ function PostCard({ post, currentUser, canEdit, onTogglePinHeadline, onTogglePin
               placeholder={canEdit ? 'Pin leads below to collect them here, then rewrite into your final version…' : ''}
               className="w-full bg-neutral-950 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-100 placeholder-neutral-700 outline-none focus:border-amber-500 disabled:opacity-70" />
             <ContentWarnings text={post.draftLead} />
+            <FieldReactions post={post} field="lead" currentUser={currentUser} onToggle={onToggleFieldReaction} />
           </div>
 
           {/* SNIPPET — post image idea + reference photos */}
@@ -1957,18 +2142,9 @@ function PostCard({ post, currentUser, canEdit, onTogglePinHeadline, onTogglePin
                   setUploadingSnippet(false);
                 }}
                 className={"mt-2.5 rounded-lg border border-dashed transition-colors p-3 " + (dragOver ? "border-amber-500 bg-amber-500/10" : "border-neutral-700")}>
-                {(post.snippetImages && post.snippetImages.length > 0) && (
-                  <div className="flex flex-wrap gap-2 mb-2.5">
-                    {post.snippetImages.map((src, i) => (
-                      <div key={i} className="relative group">
-                        <img src={src} alt={`snippet ${i + 1}`} onClick={() => setLightbox(src)}
-                          className="w-24 h-24 object-cover rounded-lg border border-neutral-700 cursor-zoom-in" />
-                        <button onClick={() => onRemoveSnippetImage(post.id, i)} title="Remove"
-                          className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-neutral-800 border border-neutral-600 text-neutral-300 text-xs flex items-center justify-center hover:bg-rose-700 hover:border-rose-600 hover:text-white">✕</button>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                <SnippetImageGrid images={post.snippetImages} canEdit className="mb-2.5"
+                  onOpen={setLightbox} onRemove={(i) => onRemoveSnippetImage(post.id, i)}
+                  onReorder={(order) => onReorderSnippetImages(post.id, order)} />
                 <div className="flex items-center gap-3 flex-wrap">
                   <span className="text-xs text-neutral-500">
                     {uploadingSnippet ? <><Dots /> Adding…</> : (dragOver ? 'Drop photos here' : 'Drag photos here, or')}
@@ -1989,15 +2165,9 @@ function PostCard({ post, currentUser, canEdit, onTogglePinHeadline, onTogglePin
                 </div>
               </div>
             ) : (
-              (post.snippetImages && post.snippetImages.length > 0) && (
-                <div className="flex flex-wrap gap-2 mt-2.5">
-                  {post.snippetImages.map((src, i) => (
-                    <img key={i} src={src} alt={`snippet ${i + 1}`} onClick={() => setLightbox(src)}
-                      className="w-24 h-24 object-cover rounded-lg border border-neutral-700 cursor-zoom-in" />
-                  ))}
-                </div>
-              )
+              <SnippetImageGrid images={post.snippetImages} canEdit={false} className="mt-2.5" onOpen={setLightbox} />
             )}
+            <FieldReactions post={post} field="snippet" currentUser={currentUser} onToggle={onToggleFieldReaction} />
           </div>
 
           {canEdit && (
@@ -2836,6 +3006,32 @@ export default function App() {
     persist((prev) => prev.map((p) => p.id === postId ? { ...p, snippetImages: (p.snippetImages || []).filter((_, i) => i !== index) } : p));
   }
 
+  // newOrder = original indices in their new order, e.g. [2, 0, 1].
+  function reorderSnippetImages(postId, newOrder) {
+    persist((prev) => prev.map((p) => {
+      if (p.id !== postId) return p;
+      const imgs = p.snippetImages || [];
+      if (!Array.isArray(newOrder) || newOrder.length !== imgs.length) return p;
+      return { ...p, snippetImages: newOrder.map((i) => imgs[i]) };
+    }));
+  }
+
+  // 👍/👎 + 1️⃣–5️⃣ on the headline / social lead / snippet fields. Usually left
+  // by someone reviewing ANOTHER person's post, so — like comment reactions —
+  // it's saved via an atomic server-side toggle, and savePost never overwrites
+  // stored fieldReactions with this browser's possibly-stale copy.
+  function toggleFieldReaction(postId, field, emoji) {
+    setPosts((prev) => prev.map((p) => p.id === postId
+      ? { ...p, fieldReactions: applyFieldReaction(p.fieldReactions, field, currentUser, emoji) }
+      : p));
+    boardApi('toggleFieldReaction', { postId, field, user: currentUser, emoji }).then(({ post: serverPost }) => {
+      if (serverPost) setPosts((prev) => prev.map((p) => p.id === postId ? { ...p, fieldReactions: serverPost.fieldReactions || {} } : p));
+    }).catch((e) => {
+      console.error('Failed to save field reaction', e);
+      showToast('Reaction may not have saved — check your connection.');
+    });
+  }
+
   async function formatPost(postId) {
     const post = posts.find((p) => p.id === postId);
     if (!post) return;
@@ -3106,6 +3302,7 @@ export default function App() {
             onMarkReady={markTopicReady}
             onAddSnippetImages={addSnippetImages}
             onRemoveSnippetImage={removeSnippetImage}
+            onReorderSnippetImages={reorderSnippetImages}
             onDelete={archivePost}
             onToggleTopicReaction={toggleTopicReaction}
             onAddComment={addComment}
@@ -3144,6 +3341,8 @@ export default function App() {
                       onEditField={editField}
                       onAddSnippetImages={addSnippetImages}
                       onRemoveSnippetImage={removeSnippetImage}
+                      onReorderSnippetImages={reorderSnippetImages}
+                      onToggleFieldReaction={toggleFieldReaction}
                       onFormat={formatPost}
                       onArchive={archivePost}
                       onAddComment={addComment}
